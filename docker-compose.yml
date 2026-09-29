@@ -65,4 +65,5 @@ volumes:
 
 networks:
   beathub-network:
+    name: beathub-network
     driver: bridge
