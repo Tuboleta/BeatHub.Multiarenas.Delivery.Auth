@@ -1,7 +1,5 @@
 package com.beathub.multiarenas.delivery.auth.controller;
 
-import com.beathub.multiarenas.delivery.auth.dto.request.LoginRequest;
-import com.beathub.multiarenas.delivery.auth.dto.request.RegistroRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.SsoLoginRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.ValidateTokenRequest;
 import com.beathub.multiarenas.delivery.auth.dto.response.ApiResponse;
@@ -17,35 +15,19 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
-@Tag(name = "Autenticación", description = "Endpoints de Login, Registro, SSO TuBoleta, Validación y Renovación de Tokens JWT")
+@Tag(name = "Autenticación", description = "Endpoints de Login SSO TuBoleta / Azure, Validación y Renovación de Tokens JWT")
 public class AuthController {
 
     private final AuthService authService;
 
-    @PostMapping("/login")
-    @Operation(summary = "Iniciar sesión tradicional y obtener Token JWT")
-    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
-        AuthResponse response = authService.login(request);
-        return ResponseEntity.ok(ApiResponse.success("Inicio de sesión exitoso", response));
-    }
-
-    @PostMapping("/registro")
-    @Operation(summary = "Registrar nuevo usuario y persona tradicional")
-    public ResponseEntity<ApiResponse<AuthResponse>> registro(@Valid @RequestBody RegistroRequest request) {
-        AuthResponse response = authService.registro(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Usuario registrado exitosamente", response));
-    }
-
-    @PostMapping("/sso/login")
-    @Operation(summary = "Iniciar sesión o registrarse mediante SSO de TuBoleta (USER_APP, RUNNER_APP, ADMIN_WEB)")
+    @PostMapping({"/sso/login", "/login"})
+    @Operation(summary = "Único endpoint de inicio de sesión publicado mediante SSO de TuBoleta / Azure (USER_APP, RUNNER_APP, ADMIN_WEB)")
     public ResponseEntity<ApiResponse<AuthResponse>> ssoLogin(@Valid @RequestBody SsoLoginRequest request) {
         AuthResponse response = authService.ssoLogin(request);
         return ResponseEntity.ok(ApiResponse.success("Autenticación SSO exitosa", response));

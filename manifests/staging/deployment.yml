@@ -42,6 +42,24 @@ spec:
               value: "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
             - name: JWT_ISSUER
               value: "beathub-auth-service"
+            - name: AZURE_SSO_ENABLED
+              value: "true"
+            - name: AZURE_SSO_JWKS_URL
+              value: "https://ssopreprod.b2clogin.com/ssopreprod.onmicrosoft.com/b2c_1a_passwordless_signin-optpass/discovery/v2.0/keys"
+            - name: AZURE_SSO_WELL_KNOWN_URL
+              value: "https://ssopreprod.b2clogin.com/ssopreprod.onmicrosoft.com/B2C_1A_PASSWORDLESS_SIGNIN-OPTPASS/v2.0/.well-known/openid-configuration"
+            - name: AZURE_SSO_CLIENT_ID
+              value: "63f8ef93-042a-40eb-a2f0-ba7b574e5ea6"
+            - name: AZURE_SSO_ISSUER
+              value: "https://ssopreprod.b2clogin.com/bea47667-153a-452f-9723-8e8b4071f126/v2.0/"
+            - name: AZURE_SSO_VALIDATE_SIGNATURE
+              value: "true"
+            - name: AZURE_SSO_VALIDATE_AUDIENCE
+              value: "true"
+            - name: AZURE_SSO_VALIDATE_ISSUER
+              value: "false"
+            - name: AZURE_SSO_CLOCK_SKEW_SECONDS
+              value: "120"
           resources:
             requests:
               cpu: "250m"

@@ -40,12 +40,27 @@ spring:
     baseline-on-migrate: false
     locations: classpath:db/migration
 
-# Configuración JWT
+# Configuración JWT y SSO Azure
 security:
   jwt:
     secret-key: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000} # 24 Horas
     issuer: "beathub-auth-service"
+  sso:
+    azure:
+      enabled: ${AZURE_SSO_ENABLED:true}
+      jwks-url: ${AZURE_SSO_JWKS_URL:https://ssopreprod.b2clogin.com/ssopreprod.onmicrosoft.com/b2c_1a_passwordless_signin-optpass/discovery/v2.0/keys}
+      well-known-url: ${AZURE_SSO_WELL_KNOWN_URL:https://ssopreprod.b2clogin.com/ssopreprod.onmicrosoft.com/B2C_1A_PASSWORDLESS_SIGNIN-OPTPASS/v2.0/.well-known/openid-configuration}
+      client-id: ${AZURE_SSO_CLIENT_ID:63f8ef93-042a-40eb-a2f0-ba7b574e5ea6}
+      accepted-client-ids:
+        - ${AZURE_SSO_CLIENT_ID:63f8ef93-042a-40eb-a2f0-ba7b574e5ea6}
+      issuer: ${AZURE_SSO_ISSUER:https://ssopreprod.b2clogin.com/bea47667-153a-452f-9723-8e8b4071f126/v2.0/}
+      validate-signature: ${AZURE_SSO_VALIDATE_SIGNATURE:true}
+      validate-audience: ${AZURE_SSO_VALIDATE_AUDIENCE:true}
+      validate-issuer: ${AZURE_SSO_VALIDATE_ISSUER:false}
+      clock-skew-seconds: ${AZURE_SSO_CLOCK_SKEW_SECONDS:120}
+      cache-ttl-minutes: ${AZURE_SSO_CACHE_TTL_MINUTES:60}
+
 
 # Springdoc OpenAPI 3 / Swagger UI
 springdoc:

@@ -221,29 +221,19 @@ Punto de entrada para autenticación delegada desde las aplicaciones de TuBoleta
 #### Request Body
 | Campo | Tipo | Obligatorio | Descripción | Ejemplo |
 | :--- | :---: | :---: | :--- | :--- |
-| `ssoId` | `string` | Sí | Identificador único de usuario en TuBoleta ADS | `"TBL-USER-987654"` |
-| `ssoProvider` | `string` | No | Nombre del proveedor SSO (por defecto `"TUBOLETA"`) | `"TUBOLETA"` |
-| `email` | `string` | Sí | Correo electrónico verificado | `"fan@tuboleta.com"` |
-| `clientType` | `string` | No | Canal de cliente: `USER_APP`, `RUNNER_APP`, `ADMIN_WEB` | `"USER_APP"` |
-| `arenaId` | `integer` | No | ID de la arena sede activa en la app | `1` |
-| `nombres` | `string` | No | Nombres recuperados del SSO | `"Andrea"` |
-| `apellidos` | `string` | No | Apellidos recuperados del SSO | `"Martínez"` |
-| `tipoDocumentoId` | `integer`| No | Tipo de documento (ej. 1) | `1` |
-| `numeroDocumento` | `string` | No | Cédula o identificación | `"52987654"` |
-| `telefono` | `string` | No | Celular del usuario | `"+573105559988"` |
-| `ssoToken` | `string` | No | Token de acceso provisto por el proveedor SSO | `"ext-token-abc"` |
+| `ssoId` / `ssoid` | `string` | Sí | Identificador único de usuario en Azure / TuBoleta (sub / oid) | `"bea47667-153a-452f-9723-8e8b4071f126"` |
+| `email` | `string` | Sí | Correo electrónico del usuario | `"fan@tuboleta.com"` |
+| `clientType` / `clienttype` | `string` | No | Canal de cliente: `USER_APP`, `RUNNER_APP`, `ADMIN_WEB` (por defecto `USER_APP`) | `"USER_APP"` |
+| `arenaId` / `arena` | `integer` | No | ID de la arena sede activa en la app | `1` |
+| `ssoToken` / `ssotoken` | `string` | Sí | Token JWT emitido por Azure AD B2C / Entra ID (validado criptográficamente vía JWKS) | `"eyJhbGciOiJSUzI1NiIs..."` |
 
 ```json
 {
-  "ssoId": "TBL-USER-987654",
-  "ssoProvider": "TUBOLETA",
+  "ssoId": "bea47667-153a-452f-9723-8e8b4071f126",
   "email": "fan@tuboleta.com",
   "clientType": "USER_APP",
-  "arenaId": 1,
-  "nombres": "Andrea",
-  "apellidos": "Martínez",
-  "numeroDocumento": "52987654",
-  "telefono": "+573105559988"
+  "arena": 1,
+  "ssoToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IlBfZHlnRmdkVi1jVWZ3SUMzWG9QeUNPbmNzZU5acHB3X1VxNG1CREhEV0EifQ..."
 }
 ```
 
@@ -267,13 +257,11 @@ Punto de entrada para autenticación delegada desde las aplicaciones de TuBoleta
 curl -X POST "http://localhost:8000/api/v1/auth/sso/login" \
   -H "Content-Type: application/json" \
   -d '{
-    "ssoId": "TBL-USER-987654",
-    "ssoProvider": "TUBOLETA",
+    "ssoId": "bea47667-153a-452f-9723-8e8b4071f126",
     "email": "fan@tuboleta.com",
     "clientType": "USER_APP",
-    "arenaId": 1,
-    "nombres": "Andrea",
-    "apellidos": "Martínez"
+    "arena": 1,
+    "ssoToken": "<AZURE_JWT_TOKEN>"
   }'
 ```
 

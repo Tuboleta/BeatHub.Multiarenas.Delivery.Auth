@@ -17,15 +17,20 @@ import com.beathub.multiarenas.delivery.auth.exception.ResourceNotFoundException
 import com.beathub.multiarenas.delivery.auth.exception.UnauthorizedException;
 import com.beathub.multiarenas.delivery.auth.repository.*;
 import com.beathub.multiarenas.delivery.auth.security.JwtTokenProvider;
+import com.beathub.multiarenas.delivery.auth.dto.sso.AzureTokenClaims;
 import com.beathub.multiarenas.delivery.auth.service.business.AuthService;
 import com.beathub.multiarenas.delivery.auth.service.client.AdsSsoClient;
+import com.beathub.multiarenas.delivery.auth.service.client.AzureSsoValidatorService;
+import com.beathub.multiarenas.delivery.auth.service.log.AppLoggerService;
 import io.jsonwebtoken.Claims;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -33,6 +38,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
@@ -45,6 +51,8 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final JwtProperties jwtProperties;
     private final AdsSsoClient adsSsoClient;
+    private final AzureSsoValidatorService azureSsoValidatorService;
+    private final AppLoggerService appLoggerService;
 
     @Override
     @Transactional(readOnly = true)
@@ -178,16 +186,58 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthResponse ssoLogin(SsoLoginRequest request) {
-        if (StringUtils.hasText(request.getSsoToken())) {
-            boolean validSsoToken = adsSsoClient.validarTokenExternoSso(request.getSsoToken());
-            if (!validSsoToken) {
-                throw new UnauthorizedException("El token de SSO de TuBoleta no es válido");
-            }
+        log.info("==> [SSO LOGIN RECIBIDO] ssoId='{}', email='{}', clientType='{}', arenaId='{}', ssoTokenPresente={}",
+                request.getSsoId(), request.getEmail(), request.getClientType(), request.getArenaId(),
+                StringUtils.hasText(request.getSsoToken()));
+
+        if (!StringUtils.hasText(request.getSsoToken())) {
+            throw new UnauthorizedException("El token de SSO de Azure (ssoToken) es obligatorio");
         }
 
-        String ssoId = request.getSsoId().trim();
-        String email = request.getEmail().trim().toLowerCase();
-        String ssoProvider = StringUtils.hasText(request.getSsoProvider()) ? request.getSsoProvider().trim() : "TUBOLETA";
+        OffsetDateTime inicioProceso = OffsetDateTime.now();
+        AzureTokenClaims azureClaims;
+        try {
+            azureClaims = azureSsoValidatorService.validarToken(
+                    request.getSsoToken(),
+                    request.getSsoId(),
+                    request.getEmail()
+            );
+
+            appLoggerService.logIntegrationService(
+                    request.getArenaId() != null ? String.valueOf(request.getArenaId()) : null,
+                    2,
+                    "AZURE_SSO_VALIDATE_TOKEN",
+                    "ssoId=" + request.getSsoId() + ", email=" + request.getEmail() + ", clientType=" + request.getClientType(),
+                    "Validación exitosa para sub=" + azureClaims.getSubject(),
+                    inicioProceso,
+                    OffsetDateTime.now(),
+                    Duration.between(inicioProceso, OffsetDateTime.now()).toMillis(),
+                    200,
+                    "SUCCESS",
+                    1
+            );
+        } catch (Exception ex) {
+            appLoggerService.logIntegrationService(
+                    request.getArenaId() != null ? String.valueOf(request.getArenaId()) : null,
+                    2,
+                    "AZURE_SSO_VALIDATE_TOKEN",
+                    "ssoId=" + request.getSsoId() + ", email=" + request.getEmail(),
+                    "Fallo de validación: " + ex.getMessage(),
+                    inicioProceso,
+                    OffsetDateTime.now(),
+                    Duration.between(inicioProceso, OffsetDateTime.now()).toMillis(),
+                    401,
+                    "ERROR",
+                    1
+            );
+            throw ex;
+        }
+
+        String ssoId = azureClaims.getSubject().trim();
+        String email = StringUtils.hasText(azureClaims.getEmail())
+                ? azureClaims.getEmail().trim().toLowerCase()
+                : request.getEmail().trim().toLowerCase();
+        String ssoProvider = "TUBOLETA";
         ClientType clientType = request.getClientType() != null ? request.getClientType() : ClientType.USER_APP;
         Long targetArenaId = request.getArenaId();
 
@@ -239,22 +289,16 @@ public class AuthServiceImpl implements AuthService {
             } else {
                 // Auto-aprovisionamiento JIT para cliente nuevo
                 Persona persona = personaRepository.findByEmail(email).orElseGet(() -> {
-                    String nombres = StringUtils.hasText(request.getNombres()) ? request.getNombres().trim() : "Usuario";
-                    String apellidos = StringUtils.hasText(request.getApellidos()) ? request.getApellidos().trim() : "TuBoleta";
-                    Integer tipoDoc = request.getTipoDocumentoId() != null ? request.getTipoDocumentoId() : 1;
-                    String numDoc = StringUtils.hasText(request.getNumeroDocumento()) ? request.getNumeroDocumento().trim() : ssoId;
+                    String nombres = StringUtils.hasText(azureClaims.getGivenName()) ? azureClaims.getGivenName().trim()
+                            : (StringUtils.hasText(azureClaims.getName()) ? azureClaims.getName().trim() : "Usuario");
+                    String apellidos = StringUtils.hasText(azureClaims.getFamilyName()) ? azureClaims.getFamilyName().trim() : "TuBoleta";
 
                     Persona p = Persona.builder()
                             .nombres(nombres)
                             .apellidos(apellidos)
-                            .tipoDocumentoId(tipoDoc)
-                            .numeroDocumento(numDoc)
+                            .tipoDocumentoId(1)
+                            .numeroDocumento(ssoId)
                             .email(email)
-                            .telefono(request.getTelefono())
-                            .paisId(request.getPaisId())
-                            .departamentoId(request.getDepartamentoId())
-                            .ciudadId(request.getCiudadId())
-                            .direccion(request.getDireccion())
                             .arenaId(targetArenaId)
                             .estadoId(1)
                             .build();
