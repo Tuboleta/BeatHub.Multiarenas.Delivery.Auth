@@ -23,6 +23,7 @@ import com.beathub.multiarenas.delivery.auth.service.client.AdsSsoClient;
 import com.beathub.multiarenas.delivery.auth.service.client.AzureSsoValidatorService;
 import com.beathub.multiarenas.delivery.auth.service.log.AppLoggerService;
 import io.jsonwebtoken.Claims;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
