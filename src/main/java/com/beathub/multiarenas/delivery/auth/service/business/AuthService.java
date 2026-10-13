@@ -9,6 +9,8 @@ import com.beathub.multiarenas.delivery.auth.dto.response.AuthResponse;
 import com.beathub.multiarenas.delivery.auth.dto.response.TokenValidationResponse;
 import com.beathub.multiarenas.delivery.auth.dto.response.UserProfileResponse;
 
+import com.beathub.multiarenas.delivery.auth.dto.request.RefreshTokenRequest;
+
 public interface AuthService {
 
     AuthResponse login(LoginRequest request);
@@ -22,6 +24,8 @@ public interface AuthService {
     UserProfileResponse obtenerPerfil(Long usuarioId);
 
     AuthResponse refreshToken(Long usuarioId, Long newArenaId);
+
+    AuthResponse refreshTokenConRefreshToken(RefreshTokenRequest request);
 
     UserProfileResponse asignarArenaUsuario(AsignarArenaUsuarioRequest request);
 }

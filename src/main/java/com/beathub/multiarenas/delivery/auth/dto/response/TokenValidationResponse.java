@@ -17,4 +17,5 @@ public class TokenValidationResponse {
     private List<String> roles;
     private List<String> scopes;
     private List<Long> arenaIds;
+    private String clientType;
 }

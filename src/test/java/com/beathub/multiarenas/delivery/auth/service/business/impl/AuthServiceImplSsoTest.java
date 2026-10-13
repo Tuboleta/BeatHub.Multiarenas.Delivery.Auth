@@ -9,6 +9,7 @@ import com.beathub.multiarenas.delivery.auth.entity.ArenaUsuario;
 import com.beathub.multiarenas.delivery.auth.entity.Persona;
 import com.beathub.multiarenas.delivery.auth.entity.Rol;
 import com.beathub.multiarenas.delivery.auth.entity.Usuario;
+import com.beathub.multiarenas.delivery.auth.exception.BadRequestException;
 import com.beathub.multiarenas.delivery.auth.exception.UnauthorizedException;
 import com.beathub.multiarenas.delivery.auth.repository.ArenaUsuarioRepository;
 import com.beathub.multiarenas.delivery.auth.repository.PersonaRepository;
@@ -92,6 +93,16 @@ class AuthServiceImplSsoTest {
     }
 
     @Test
+    void ssoLogin_ClientTypeBackOffice_LanzaBadRequestException() {
+        request.setClientType(ClientType.BACKOFFICE);
+
+        BadRequestException ex = assertThrows(BadRequestException.class, () ->
+                authService.ssoLogin(request)
+        );
+        assertTrue(ex.getMessage().contains("BACKOFFICE"));
+    }
+
+    @Test
     void ssoLogin_SinSsoToken_LanzaUnauthorizedException() {
         request.setSsoToken(null);
 
@@ -132,7 +143,7 @@ class AuthServiceImplSsoTest {
 
         when(usuarioRepository.findBySsoId("TBL-AZURE-GUID-123")).thenReturn(Optional.of(usuario));
         when(jwtProperties.getExpirationMs()).thenReturn(86400000L);
-        when(jwtTokenProvider.generarToken(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(jwtTokenProvider.generarToken(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn("beathub-jwt-access-token");
 
         Rol rolCliente = Rol.builder().id(4L).nombre("CLIENTE").build();
@@ -174,7 +185,7 @@ class AuthServiceImplSsoTest {
         when(arenaUsuarioRepository.save(any(ArenaUsuario.class))).thenAnswer(inv -> inv.getArgument(0));
 
         when(jwtProperties.getExpirationMs()).thenReturn(86400000L);
-        when(jwtTokenProvider.generarToken(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(jwtTokenProvider.generarToken(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn("beathub-jwt-access-token-new-user");
 
         AuthResponse response = authService.ssoLogin(request);

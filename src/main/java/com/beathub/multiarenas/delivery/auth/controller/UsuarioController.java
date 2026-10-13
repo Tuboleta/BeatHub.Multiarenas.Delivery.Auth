@@ -25,7 +25,7 @@ public class UsuarioController {
     private final AuthService authService;
 
     @PostMapping("/asignar-arena")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA', 'BACKOFFICE')")
     @Operation(summary = "Asignar rol y arena a un usuario (Dar de alta Runner o Admin de Arena)")
     public ResponseEntity<ApiResponse<UserProfileResponse>> asignarArena(@Valid @RequestBody AsignarArenaUsuarioRequest request) {
         UserProfileResponse response = authService.asignarArenaUsuario(request);
@@ -33,7 +33,7 @@ public class UsuarioController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA') or #id == authentication.principal.usuarioId")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA', 'BACKOFFICE') or #id == authentication.principal.usuarioId")
     @Operation(summary = "Obtener usuario por ID")
     public ResponseEntity<ApiResponse<UserProfileResponse>> obtenerPorId(@PathVariable("id") Long id) {
         UserProfileResponse response = usuarioService.obtenerPorId(id);
@@ -41,7 +41,7 @@ public class UsuarioController {
     }
 
     @GetMapping("/username/{username}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA') or #username == authentication.principal.username")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA', 'BACKOFFICE') or #username == authentication.principal.username")
     @Operation(summary = "Obtener usuario por username")
     public ResponseEntity<ApiResponse<UserProfileResponse>> obtenerPorUsername(@PathVariable("username") String username) {
         UserProfileResponse response = usuarioService.obtenerPorUsername(username);

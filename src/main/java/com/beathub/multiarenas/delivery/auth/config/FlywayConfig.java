@@ -37,6 +37,7 @@ public class FlywayConfig {
                 .locations("classpath:db/migration")
                 .load();
 
+        flyway.repair();
         flyway.migrate();
         return flyway;
     }
