@@ -35,6 +35,7 @@ public class UserPrincipal implements UserDetails {
     private final List<String> scopes;
     private final Collection<? extends GrantedAuthority> authorities;
     private final boolean enabled;
+    private final String clientType;
 
     public static UserPrincipal create(Usuario usuario, Long activeArenaId) {
         List<GrantedAuthority> authorities = new ArrayList<>();
@@ -53,8 +54,8 @@ public class UserPrincipal implements UserDetails {
                             if (!roleName.startsWith("ROLE_")) {
                                 roleName = "ROLE_" + roleName;
                             }
-                            // Si es SUPER_ADMIN o el rol pertenece a la arena activa (o no hay filtro)
-                            if (roleName.equals("ROLE_SUPER_ADMIN") || activeArenaId == null || activeArenaId.equals(au.getArenaId())) {
+                            // Si es SUPER_ADMIN o BACKOFFICE o el rol pertenece a la arena activa (o no hay filtro)
+                            if (roleName.equals("ROLE_SUPER_ADMIN") || roleName.equals("ROLE_BACKOFFICE") || activeArenaId == null || activeArenaId.equals(au.getArenaId())) {
                                 authorities.add(new SimpleGrantedAuthority(roleName));
                             }
                         }
@@ -172,6 +173,8 @@ public class UserPrincipal implements UserDetails {
             }
         }
 
+        String clientType = claims.get("clientType", String.class);
+
         return UserPrincipal.builder()
                 .usuarioId(usuarioId)
                 .username(username)
@@ -184,6 +187,7 @@ public class UserPrincipal implements UserDetails {
                 .scopes(scopes)
                 .authorities(authorities)
                 .enabled(true)
+                .clientType(clientType)
                 .build();
     }
 

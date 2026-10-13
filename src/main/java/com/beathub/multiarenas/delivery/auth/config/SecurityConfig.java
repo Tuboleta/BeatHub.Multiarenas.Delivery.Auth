@@ -50,10 +50,16 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/login",
+                                "/backoffice/login",
                                 "/sso/login",
+                                "/refresh",
+                                "/token/refresh",
                                 "/validate",
                                 "/auth/login",
+                                "/auth/backoffice/login",
                                 "/auth/sso/login",
+                                "/auth/refresh",
+                                "/auth/token/refresh",
                                 "/auth/validate",
                                 "/status",
                                 "/actuator/**",

@@ -36,7 +36,7 @@ class JwtTokenProviderTest {
         Long currentArenaId = 1L;
         List<Long> arenaIds = List.of(1L, 2L);
 
-        String token = jwtTokenProvider.generarToken(usuarioId, username, email, ssoId, personaId, roles, scopes, currentArenaId, arenaIds);
+        String token = jwtTokenProvider.generarToken(usuarioId, username, email, ssoId, personaId, roles, scopes, currentArenaId, arenaIds, "BACKOFFICE");
 
         assertNotNull(token);
         assertTrue(jwtTokenProvider.validarToken(token));
@@ -48,6 +48,7 @@ class JwtTokenProviderTest {
         assertEquals(ssoId, claims.get("ssoId", String.class));
         assertEquals(personaId, claims.get("personaId", Long.class));
         assertEquals(currentArenaId, claims.get("currentArenaId", Long.class));
+        assertEquals("BACKOFFICE", claims.get("clientType", String.class));
         assertEquals(usuarioId, jwtTokenProvider.extraerUsuarioId(token));
 
         UserPrincipal principal = jwtTokenProvider.extraerUserPrincipal(token);
@@ -58,6 +59,7 @@ class JwtTokenProviderTest {
         assertEquals(ssoId, principal.getSsoId());
         assertEquals(personaId, principal.getPersonaId());
         assertEquals(currentArenaId, principal.getCurrentArenaId());
+        assertEquals("BACKOFFICE", principal.getClientType());
         assertEquals(2, principal.getArenaIds().size());
         assertEquals(1, principal.getAuthorities().size());
         assertTrue(principal.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_CLIENTE")));
@@ -68,5 +70,32 @@ class JwtTokenProviderTest {
         assertFalse(jwtTokenProvider.validarToken("token_invalido"));
         assertFalse(jwtTokenProvider.validarToken(""));
         assertFalse(jwtTokenProvider.validarToken(null));
+    }
+
+    @Test
+    void generarYValidarRefreshToken_Exitoso() {
+        Long usuarioId = 200L;
+        String username = "backoffice";
+        Long currentArenaId = 1L;
+
+        String refreshToken = jwtTokenProvider.generarRefreshToken(usuarioId, username, currentArenaId);
+
+        assertNotNull(refreshToken);
+        assertTrue(jwtTokenProvider.validarToken(refreshToken));
+        assertTrue(jwtTokenProvider.validarRefreshToken(refreshToken));
+
+        Claims claims = jwtTokenProvider.extraerClaims(refreshToken);
+        assertEquals(String.valueOf(usuarioId), claims.getSubject());
+        assertEquals("backoffice", claims.get("username", String.class));
+        assertEquals("REFRESH", claims.get("tokenType", String.class));
+        assertEquals(1L, claims.get("currentArenaId", Long.class));
+    }
+
+    @Test
+    void validarRefreshToken_TokenEstandarNoEsRefreshToken_RetornaFalse() {
+        String tokenEstandar = jwtTokenProvider.generarToken(1L, "user", "user@test.com", null, 1L, List.of("ROLE_CLIENTE"), List.of("api:access"), 1L, List.of(1L));
+
+        assertTrue(jwtTokenProvider.validarToken(tokenEstandar));
+        assertFalse(jwtTokenProvider.validarRefreshToken(tokenEstandar));
     }
 }

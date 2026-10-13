@@ -4,6 +4,7 @@ import com.beathub.multiarenas.delivery.auth.config.JwtProperties;
 import com.beathub.multiarenas.delivery.auth.dto.request.AsignarArenaUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.ClientType;
 import com.beathub.multiarenas.delivery.auth.dto.request.LoginRequest;
+import com.beathub.multiarenas.delivery.auth.dto.request.RefreshTokenRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.RegistroRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.SsoLoginRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.ValidateTokenRequest;
@@ -11,6 +12,7 @@ import com.beathub.multiarenas.delivery.auth.dto.response.AuthResponse;
 import com.beathub.multiarenas.delivery.auth.dto.response.TokenValidationResponse;
 import com.beathub.multiarenas.delivery.auth.dto.response.UserProfileResponse;
 import com.beathub.multiarenas.delivery.auth.entity.*;
+import com.beathub.multiarenas.delivery.auth.exception.BadRequestException;
 import com.beathub.multiarenas.delivery.auth.exception.BusinessException;
 import com.beathub.multiarenas.delivery.auth.exception.ForbiddenException;
 import com.beathub.multiarenas.delivery.auth.exception.ResourceNotFoundException;
@@ -65,8 +67,15 @@ public class AuthServiceImpl implements AuthService {
             throw new UnauthorizedException("Credenciales inválidas");
         }
 
-        if (usuario.getEstadoId() != null && usuario.getEstadoId() != 1) {
-            throw new UnauthorizedException("El usuario se encuentra inactivo");
+        validarEstadoUsuario(usuario);
+
+        if (request.getClientType() != ClientType.BACKOFFICE) {
+            throw new BadRequestException("ClientType no permitido: La autenticación directa solo admite el contexto 'BACKOFFICE'. Los demás entornos deben autenticarse mediante SSO.");
+        }
+
+        boolean esBackOffice = tieneRolEnArena(usuario, "BACKOFFICE", null) || tieneRolEnArena(usuario, "SUPER_ADMIN", null);
+        if (!esBackOffice) {
+            throw new ForbiddenException("Acceso denegado: El usuario no cuenta con rol de BackOffice asignado");
         }
 
         List<Long> arenaIds = usuario.getArenas().stream()
@@ -74,7 +83,14 @@ public class AuthServiceImpl implements AuthService {
                 .distinct()
                 .collect(Collectors.toList());
 
-        Long defaultArenaId = !arenaIds.isEmpty() ? arenaIds.get(0) : null;
+        Long targetArenaId = request.getArenaId();
+        if (targetArenaId != null && !arenaIds.contains(targetArenaId) 
+                && !tieneRolEnArena(usuario, "SUPER_ADMIN", null) 
+                && !tieneRolEnArena(usuario, "BACKOFFICE", null)) {
+            throw new ForbiddenException("No tienes permisos para operar en la arena solicitada.");
+        }
+
+        Long defaultArenaId = (targetArenaId != null) ? targetArenaId : (!arenaIds.isEmpty() ? arenaIds.get(0) : null);
         List<String> roles = obtenerRolesUsuario(usuario, defaultArenaId);
         List<String> scopes = Collections.singletonList("api:access");
 
@@ -87,11 +103,20 @@ public class AuthServiceImpl implements AuthService {
                 roles,
                 scopes,
                 defaultArenaId,
-                arenaIds
+                arenaIds,
+                request.getClientType().name()
+        );
+
+        String refreshToken = jwtTokenProvider.generarRefreshToken(
+                usuario.getId(),
+                usuario.getUsername(),
+                defaultArenaId,
+                request.getClientType().name()
         );
 
         return AuthResponse.builder()
                 .token(token)
+                .refreshToken(refreshToken)
                 .tokenType("Bearer")
                 .expiresIn(jwtProperties.getExpirationMs())
                 .build();
@@ -177,8 +202,15 @@ public class AuthServiceImpl implements AuthService {
                 arenaIds
         );
 
+        String refreshToken = jwtTokenProvider.generarRefreshToken(
+                usuario.getId(),
+                usuario.getUsername(),
+                request.getArenaId()
+        );
+
         return AuthResponse.builder()
                 .token(token)
+                .refreshToken(refreshToken)
                 .tokenType("Bearer")
                 .expiresIn(jwtProperties.getExpirationMs())
                 .build();
@@ -190,6 +222,10 @@ public class AuthServiceImpl implements AuthService {
         log.info("==> [SSO LOGIN RECIBIDO] ssoId='{}', email='{}', clientType='{}', arenaId='{}', ssoTokenPresente={}",
                 request.getSsoId(), request.getEmail(), request.getClientType(), request.getArenaId(),
                 StringUtils.hasText(request.getSsoToken()));
+
+        if (request.getClientType() == ClientType.BACKOFFICE) {
+            throw new BadRequestException("El contexto 'BACKOFFICE' no admite autenticación vía SSO TuBoleta/Azure. Debe utilizar el endpoint '/backoffice/login'.");
+        }
 
         if (!StringUtils.hasText(request.getSsoToken())) {
             throw new UnauthorizedException("El token de SSO de Azure (ssoToken) es obligatorio");
@@ -350,11 +386,20 @@ public class AuthServiceImpl implements AuthService {
                 roles,
                 scopes,
                 currentArena,
-                arenaIds
+                arenaIds,
+                clientType.name()
+        );
+
+        String refreshToken = jwtTokenProvider.generarRefreshToken(
+                usuario.getId(),
+                usuario.getUsername(),
+                currentArena,
+                clientType.name()
         );
 
         return AuthResponse.builder()
                 .token(token)
+                .refreshToken(refreshToken)
                 .tokenType("Bearer")
                 .expiresIn(jwtProperties.getExpirationMs())
                 .build();
@@ -461,6 +506,8 @@ public class AuthServiceImpl implements AuthService {
             }
         }
 
+        String clientType = claims.get("clientType", String.class);
+
         return TokenValidationResponse.builder()
                 .valid(true)
                 .usuarioId(usuarioId)
@@ -471,6 +518,7 @@ public class AuthServiceImpl implements AuthService {
                 .roles(roles)
                 .scopes(scopes)
                 .arenaIds(arenaIds)
+                .clientType(clientType)
                 .build();
     }
 
@@ -518,9 +566,7 @@ public class AuthServiceImpl implements AuthService {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con id: " + usuarioId));
 
-        if (usuario.getEstadoId() != null && usuario.getEstadoId() != 1) {
-            throw new UnauthorizedException("El usuario se encuentra inactivo");
-        }
+        validarEstadoUsuario(usuario);
 
         List<Long> arenaIds = usuario.getArenas().stream()
                 .map(ArenaUsuario::getArenaId)
@@ -528,7 +574,9 @@ public class AuthServiceImpl implements AuthService {
                 .collect(Collectors.toList());
 
         Long effectiveArena = newArenaId;
-        if (effectiveArena != null && !arenaIds.contains(effectiveArena) && !tieneRolEnArena(usuario, "SUPER_ADMIN", null)) {
+        if (effectiveArena != null && !arenaIds.contains(effectiveArena) 
+                && !tieneRolEnArena(usuario, "SUPER_ADMIN", null) 
+                && !tieneRolEnArena(usuario, "BACKOFFICE", null)) {
             throw new ForbiddenException("No tienes permisos para operar en la arena solicitada.");
         }
         if (effectiveArena == null && !arenaIds.isEmpty()) {
@@ -550,8 +598,87 @@ public class AuthServiceImpl implements AuthService {
                 arenaIds
         );
 
+        String refreshToken = jwtTokenProvider.generarRefreshToken(
+                usuario.getId(),
+                usuario.getUsername(),
+                effectiveArena
+        );
+
         return AuthResponse.builder()
                 .token(token)
+                .refreshToken(refreshToken)
+                .tokenType("Bearer")
+                .expiresIn(jwtProperties.getExpirationMs())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AuthResponse refreshTokenConRefreshToken(RefreshTokenRequest request) {
+        if (request == null || !StringUtils.hasText(request.getRefreshToken())) {
+            throw new UnauthorizedException("El refresh token es obligatorio");
+        }
+
+        String refreshTokenStr = request.getRefreshToken().trim();
+        if (!jwtTokenProvider.validarRefreshToken(refreshTokenStr)) {
+            throw new UnauthorizedException("El refresh token es inválido o ha expirado");
+        }
+
+        Claims claims = jwtTokenProvider.extraerClaims(refreshTokenStr);
+        Long usuarioId = Long.parseLong(claims.getSubject());
+
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado"));
+
+        validarEstadoUsuario(usuario);
+
+        List<Long> arenaIds = usuario.getArenas().stream()
+                .map(ArenaUsuario::getArenaId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        Long effectiveArena = request.getArenaId();
+        if (effectiveArena != null && !arenaIds.contains(effectiveArena) 
+                && !tieneRolEnArena(usuario, "SUPER_ADMIN", null) 
+                && !tieneRolEnArena(usuario, "BACKOFFICE", null)) {
+            throw new ForbiddenException("No tienes permisos para operar en la arena solicitada.");
+        }
+        if (effectiveArena == null) {
+            Object rawCurrent = claims.get("currentArenaId");
+            if (rawCurrent instanceof Number num) {
+                effectiveArena = num.longValue();
+            } else if (!arenaIds.isEmpty()) {
+                effectiveArena = arenaIds.get(0);
+            }
+        }
+
+        List<String> roles = obtenerRolesUsuario(usuario, effectiveArena);
+        List<String> scopes = Collections.singletonList("api:access");
+        String clientType = claims.get("clientType", String.class);
+
+        String newAccessToken = jwtTokenProvider.generarToken(
+                usuario.getId(),
+                usuario.getUsername(),
+                usuario.getPersona().getEmail(),
+                usuario.getSsoId(),
+                usuario.getPersona().getId(),
+                roles,
+                scopes,
+                effectiveArena,
+                arenaIds,
+                clientType
+        );
+
+        String newRefreshToken = jwtTokenProvider.generarRefreshToken(
+                usuario.getId(),
+                usuario.getUsername(),
+                effectiveArena,
+                clientType
+        );
+
+        return AuthResponse.builder()
+                .token(newAccessToken)
+                .refreshToken(newRefreshToken)
                 .tokenType("Bearer")
                 .expiresIn(jwtProperties.getExpirationMs())
                 .build();
@@ -643,14 +770,16 @@ public class AuthServiceImpl implements AuthService {
         List<String> roles = new ArrayList<>();
         if (usuario.getArenas() != null) {
             for (ArenaUsuario au : usuario.getArenas()) {
-                if (arenaId == null || arenaId.equals(au.getArenaId())) {
-                    if (au.getRoles() != null) {
-                        for (RolArenaUsuario rau : au.getRoles()) {
-                            if (rau.getRol() != null && rau.getRol().getNombre() != null) {
-                                String r = rau.getRol().getNombre().toUpperCase();
-                                if (!r.startsWith("ROLE_")) {
-                                    r = "ROLE_" + r;
-                                }
+                if (au.getRoles() != null) {
+                    for (RolArenaUsuario rau : au.getRoles()) {
+                        if (rau.getRol() != null && rau.getRol().getNombre() != null) {
+                            String r = rau.getRol().getNombre().toUpperCase();
+                            if (!r.startsWith("ROLE_")) {
+                                r = "ROLE_" + r;
+                            }
+                            if (r.equals("ROLE_SUPER_ADMIN") || r.equals("ROLE_BACKOFFICE")) {
+                                roles.add(r);
+                            } else if (arenaId == null || arenaId.equals(au.getArenaId())) {
                                 roles.add(r);
                             }
                         }

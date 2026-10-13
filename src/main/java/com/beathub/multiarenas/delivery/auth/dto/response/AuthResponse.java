@@ -18,6 +18,9 @@ public class AuthResponse {
     @Schema(description = "Token de autenticación JWT firmado")
     private String token;
 
+    @Schema(description = "Token de renovación JWT para procesos en segundo plano o actualización de sesión")
+    private String refreshToken;
+
     @Schema(description = "Tipo de token", example = "Bearer")
     @Builder.Default
     private String tokenType = "Bearer";

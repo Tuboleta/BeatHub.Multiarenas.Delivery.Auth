@@ -61,15 +61,16 @@ X-Correlation-Id: <UUID>           # Opcional, para trazabilidad
 
 | Método | Endpoint Gateway | Requiere Auth | Roles Permitidos | Resumen |
 | :---: | :--- | :---: | :--- | :--- |
-| `POST` | `/api/v1/auth/login` | ❌ No | Público | Inicio de sesión tradicional (email o username + password). |
+| `POST` | `/api/v1/auth/login` | ❌ No | Público / BackOffice | Inicio de sesión directo con credenciales (usuario + password) con refresh token. |
+| `POST` | `/api/v1/auth/backoffice/login` | ❌ No | Público / BackOffice | Endpoint dedicado para autenticación del entorno BackOffice. |
 | `POST` | `/api/v1/auth/registro` | ❌ No | Público | Registro de nuevo cliente con datos de persona y usuario. |
-| `POST` | `/api/v1/auth/sso/login` | ❌ No | Público | Inicio de sesión o alta automática vía SSO TuBoleta (ADS). |
+| `POST` | `/api/v1/auth/sso/login` | ❌ No | Público | Inicio de sesión o alta automática vía SSO TuBoleta / Azure. |
 | `POST` | `/api/v1/auth/validate` | ❌ No | Interno / Gateway | Introspección y validación de token JWT. |
 | `GET` | `/api/v1/auth/me` | ✅ Sí | Autenticado | Obtener información y perfil del usuario en sesión. |
-| `POST` | `/api/v1/auth/refresh` | ✅ Sí | Autenticado | Renovar token JWT o cambiar contexto de arena activa. |
-| `POST` | `/api/v1/auth/usuarios/asignar-arena` | ✅ Sí | `SUPER_ADMIN`, `ADMIN_ARENA` | Asignar rol de Runner o Administrador de Arena a un usuario. |
-| `GET` | `/api/v1/auth/usuarios/{id}` | ✅ Sí | `SUPER_ADMIN`, `ADMIN_ARENA` o Propio | Obtener usuario por ID numérico. |
-| `GET` | `/api/v1/auth/usuarios/username/{username}` | ✅ Sí | `SUPER_ADMIN`, `ADMIN_ARENA` o Propio | Obtener usuario por username. |
+| `POST` | `/api/v1/auth/refresh` | ❌ No / ✅ Opcional | Público (con RefreshToken) / Autenticado | Renovar Token JWT en segundo plano mediante refresh token o sesión activa. |
+| `POST` | `/api/v1/auth/usuarios/asignar-arena` | ✅ Sí | `SUPER_ADMIN`, `ADMIN_ARENA`, `BACKOFFICE` | Asignar rol de Runner o Administrador de Arena a un usuario. |
+| `GET` | `/api/v1/auth/usuarios/{id}` | ✅ Sí | `SUPER_ADMIN`, `ADMIN_ARENA`, `BACKOFFICE` o Propio | Obtener usuario por ID numérico. |
+| `GET` | `/api/v1/auth/usuarios/username/{username}` | ✅ Sí | `SUPER_ADMIN`, `ADMIN_ARENA`, `BACKOFFICE` o Propio | Obtener usuario por username. |
 | `GET` | `/api/v1/auth/status` | ❌ No | Público | Healthcheck básico del microservicio. |
 
 ---
@@ -106,6 +107,7 @@ Permite a usuarios registrados autenticarse usando su nombre de usuario o correo
   "message": "Inicio de sesión exitoso",
   "data": {
     "token": "eyJhbGciOiJIUzI1NiJ9...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiJ9...",
     "tokenType": "Bearer",
     "expiresIn": 86400000
   },
@@ -119,8 +121,67 @@ Permite a usuarios registrados autenticarse usando su nombre de usuario o correo
 curl -X POST "http://localhost:8000/api/v1/auth/login" \
   -H "Content-Type: application/json" \
   -d '{
-    "login": "cliente@beathub.com",
-    "password": "Password123*"
+    "login": "backoffice",
+    "password": "Admin12345!"
+  }'
+```
+
+---
+
+### 1.1 Iniciar Sesión BackOffice (`/backoffice/login`)
+Endpoint específico para la autenticación de servicios backend y procesos en segundo plano del entorno BackOffice. Valida estrictamente que el usuario cuente con rol `BACKOFFICE` (o `SUPER_ADMIN`).
+
+- **Método:** `POST`
+- **URL Gateway:** `http://localhost:8000/api/v1/auth/backoffice/login`
+- **URL Directa:** `http://localhost:8080/api/v1/auth/backoffice/login`
+- **Autenticación:** No requerida.
+- **Headers:** `Content-Type: application/json`
+
+#### Request Body
+| Campo | Tipo | Obligatorio | Descripción | Ejemplo |
+| :--- | :---: | :---: | :--- | :--- |
+| `login` / `username` | `string` | Sí | Nombre de usuario o correo de BackOffice | `"backoffice"` |
+| `password` | `string` | Sí | Contraseña en texto plano | `"Admin12345!"` |
+| `clientType` | `string` | Opcional / Estricto | Si se envía, solo admite `"BACKOFFICE"`. Otros contextos son rechazados | `"BACKOFFICE"` |
+| `arenaId` | `integer` | Opcional | ID de la arena inicial para operar | `1` |
+
+```json
+{
+  "login": "backoffice",
+  "password": "Admin12345!",
+  "clientType": "BACKOFFICE",
+  "arenaId": 1
+}
+```
+
+#### Respuestas
+- **`200 OK`**:
+```json
+{
+  "success": true,
+  "message": "Autenticación BackOffice exitosa",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiJ9...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiJ9...",
+    "tokenType": "Bearer",
+    "expiresIn": 86400000
+  },
+  "timestamp": "2026-10-13T10:00:00"
+}
+```
+- **`400 Bad Request`**: Si se envía un `clientType` diferente a `BACKOFFICE` (ej. `USER_APP`, `RUNNER_APP`).
+- **`401 Unauthorized`**: Credenciales inválidas o usuario inactivo.
+- **`403 Forbidden`**: El usuario no cuenta con rol de BackOffice asignado.
+
+#### cURL de Ejemplo
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/backoffice/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "login": "backoffice",
+    "password": "Admin12345!",
+    "clientType": "BACKOFFICE",
+    "arenaId": 1
   }'
 ```
 
@@ -363,32 +424,58 @@ curl -X GET "http://localhost:8000/api/v1/auth/me" \
 
 ---
 
-### 6. Renovar Token JWT o Cambiar Contexto de Arena (`/refresh`)
-Genera un nuevo token JWT válido. Permite además conmutar el `arenaId` activo en el token cuando el usuario cambia de sede.
+### 6. Renovar Token JWT en Segundo Plano o Cambiar Contexto de Arena (`/refresh`)
+Genera un nuevo par de tokens JWT (`token` de acceso y `refreshToken`). Soporta dos modalidades:
+1. **Segundo plano / Procesos BackOffice:** Enviando un `RefreshTokenRequest` en el body con `refreshToken`. No requiere token Bearer activo (funciona incluso con access token expirado).
+2. **Sesión activa en caliente:** Con encabezado `Authorization: Bearer <token>` y conmutación opcional de arena activa vía query param o body.
 
 - **Método:** `POST`
-- **URL Gateway:** `http://localhost:8000/api/v1/auth/refresh?arenaId={arenaId}`
-- **URL Directa:** `http://localhost:8080/api/v1/auth/refresh?arenaId={arenaId}`
-- **Autenticación:** Requerida (`Bearer <token>`).
-- **Query Params:**
-  - `arenaId` (opcional): ID numérico de la nueva arena a fijar en los claims.
+- **URL Gateway:** `http://localhost:8000/api/v1/auth/refresh` o `http://localhost:8000/api/v1/auth/token/refresh`
+- **URL Directa:** `http://localhost:8080/api/v1/auth/refresh`
+- **Autenticación:** Pública (si envía `refreshToken` en el body) o Requerida (`Bearer <token>`).
+- **Headers:** `Content-Type: application/json`
+
+#### Request Body (Modalidad Segundo Plano / Refresh Token)
+| Campo | Tipo | Obligatorio | Descripción | Ejemplo |
+| :--- | :---: | :---: | :--- | :--- |
+| `refreshToken` | `string` | Sí | Refresh Token vigente emitido por el servicio Auth | `"eyJhbGciOiJIUzI1NiJ9..."` |
+| `arenaId` | `integer` | No | ID de la arena a la cual conmutar contexto (opcional) | `1` |
+
+```json
+{
+  "refreshToken": "eyJhbGciOiJIUzI1NiJ9...",
+  "arenaId": 1
+}
+```
 
 #### Respuestas
 - **`200 OK`**:
 ```json
 {
   "success": true,
-  "message": "Token renovado exitosamente",
+  "message": "Token renovado exitosamente con refresh token",
   "data": {
     "token": "eyJhbGciOiJIUzI1NiJ9...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiJ9...",
     "tokenType": "Bearer",
     "expiresIn": 86400000
   },
-  "timestamp": "2026-10-05T10:00:00"
+  "timestamp": "2026-10-13T10:00:00"
 }
 ```
+- **`401 Unauthorized`**: Refresh token inválido, expirado o ausente.
 
-#### cURL de Ejemplo
+#### cURL de Ejemplo (Renovación con Refresh Token en Segundo Plano)
+```bash
+curl -X POST "http://localhost:8000/api/v1/auth/refresh" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refreshToken": "eyJhbGciOiJIUzI1NiJ9...",
+    "arenaId": 1
+  }'
+```
+
+#### cURL de Ejemplo (Renovación con Sesión Bearer Activa)
 ```bash
 curl -X POST "http://localhost:8000/api/v1/auth/refresh?arenaId=2" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \

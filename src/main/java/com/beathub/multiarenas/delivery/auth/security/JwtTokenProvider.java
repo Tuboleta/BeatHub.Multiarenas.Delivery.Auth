@@ -28,7 +28,7 @@ public class JwtTokenProvider {
         return Keys.hmacShaKeyFor(jwtProperties.getSecretKey().getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId, List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds) {
+    public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId, List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds, String clientType) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtProperties.getExpirationMs());
 
@@ -46,6 +46,10 @@ public class JwtTokenProvider {
                 .claim("scopes", scopes)
                 .claim("arenaIds", arenaIds);
 
+        if (clientType != null && !clientType.isBlank()) {
+            builder.claim("clientType", clientType);
+        }
+
         if (ssoId != null && !ssoId.isBlank()) {
             builder.claim("ssoId", ssoId);
         }
@@ -55,6 +59,38 @@ public class JwtTokenProvider {
         }
 
         return builder.signWith(getSigningKey()).compact();
+    }
+
+    public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId, List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds) {
+        return generarToken(usuarioId, username, email, ssoId, personaId, roles, scopes, currentArenaId, arenaIds, null);
+    }
+
+    public String generarRefreshToken(Long usuarioId, String username, Long currentArenaId, String clientType) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + jwtProperties.getRefreshExpirationMs());
+
+        var builder = Jwts.builder()
+                .subject(String.valueOf(usuarioId))
+                .issuer(jwtProperties.getIssuer())
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .claim("usuarioId", usuarioId)
+                .claim("username", username)
+                .claim("tokenType", "REFRESH");
+
+        if (clientType != null && !clientType.isBlank()) {
+            builder.claim("clientType", clientType);
+        }
+
+        if (currentArenaId != null) {
+            builder.claim("currentArenaId", currentArenaId);
+        }
+
+        return builder.signWith(getSigningKey()).compact();
+    }
+
+    public String generarRefreshToken(Long usuarioId, String username, Long currentArenaId) {
+        return generarRefreshToken(usuarioId, username, currentArenaId, null);
     }
 
     public String generarToken(UserPrincipal userPrincipal) {
@@ -71,7 +107,8 @@ public class JwtTokenProvider {
                 roles,
                 userPrincipal.getScopes(),
                 userPrincipal.getCurrentArenaId(),
-                userPrincipal.getArenaIds()
+                userPrincipal.getArenaIds(),
+                userPrincipal.getClientType()
         );
     }
 
@@ -101,6 +138,20 @@ public class JwtTokenProvider {
             log.error("Error al validar token JWT: {}", ex.getMessage());
         }
         return false;
+    }
+
+    public boolean validarRefreshToken(String token) {
+        if (!validarToken(token)) {
+            return false;
+        }
+        try {
+            Claims claims = extraerClaims(token);
+            String tokenType = claims.get("tokenType", String.class);
+            return "REFRESH".equalsIgnoreCase(tokenType);
+        } catch (Exception ex) {
+            log.error("Error al validar refresh token JWT: {}", ex.getMessage());
+            return false;
+        }
     }
 
     public Long extraerUsuarioId(String token) {
