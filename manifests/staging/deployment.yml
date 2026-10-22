@@ -60,6 +60,12 @@ spec:
               value: "false"
             - name: AZURE_SSO_CLOCK_SKEW_SECONDS
               value: "120"
+            - name: SPRING_DATA_REDIS_HOST
+              value: "redis.multiarenas.svc.cluster.local"
+            - name: SPRING_DATA_REDIS_PORT
+              value: "6379"
+            - name: SPRING_DATA_REDIS_PASSWORD
+              value: ""
           resources:
             requests:
               cpu: "250m"
