@@ -27,10 +27,14 @@ import com.beathub.multiarenas.delivery.auth.service.log.AppLoggerService;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+
+import static com.beathub.multiarenas.delivery.auth.config.RedisCacheConfig.CACHE_USER_PROFILE;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -407,6 +411,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
+    @CacheEvict(value = CACHE_USER_PROFILE, allEntries = true)
     public UserProfileResponse asignarArenaUsuario(AsignarArenaUsuarioRequest request) {
         String email = request.getEmail().trim().toLowerCase();
         Long arenaId = request.getArenaId();
@@ -524,6 +529,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = CACHE_USER_PROFILE, key = "#usuarioId")
     public UserProfileResponse obtenerPerfil(Long usuarioId) {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con id: " + usuarioId));
