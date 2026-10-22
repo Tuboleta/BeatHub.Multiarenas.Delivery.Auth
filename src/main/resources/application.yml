@@ -40,6 +40,18 @@ spring:
     baseline-on-migrate: false
     locations: classpath:db/migration
 
+  # Redis Cache
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      timeout: 3000ms
+      repositories:
+        enabled: false
+  cache:
+    type: redis
+
 # Configuración JWT y SSO Azure
 security:
   jwt:
