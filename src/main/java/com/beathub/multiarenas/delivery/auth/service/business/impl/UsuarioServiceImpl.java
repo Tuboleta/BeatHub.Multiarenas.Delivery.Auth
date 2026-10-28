@@ -6,15 +6,16 @@ import com.beathub.multiarenas.delivery.auth.entity.Usuario;
 import com.beathub.multiarenas.delivery.auth.exception.ForbiddenException;
 import com.beathub.multiarenas.delivery.auth.exception.ResourceNotFoundException;
 import com.beathub.multiarenas.delivery.auth.repository.UsuarioRepository;
+import com.beathub.multiarenas.delivery.auth.repository.specification.UsuarioSpecification;
 import com.beathub.multiarenas.delivery.auth.security.SecurityUtils;
 import com.beathub.multiarenas.delivery.auth.service.business.AuthService;
 import com.beathub.multiarenas.delivery.auth.service.business.UsuarioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 @Service
 @RequiredArgsConstructor
@@ -53,10 +54,8 @@ public class UsuarioServiceImpl implements UsuarioService {
             }
         }
 
-        String searchFiltro = StringUtils.hasText(search) ? search.trim() : null;
-        String rolFiltro = StringUtils.hasText(rol) ? rol.trim() : null;
-
-        Page<Usuario> paginaUsuarios = usuarioRepository.buscarUsuarios(arenaFiltro, estadoId, rolFiltro, searchFiltro, pageable);
+        Specification<Usuario> spec = UsuarioSpecification.conFiltros(arenaFiltro, estadoId, rol, search);
+        Page<Usuario> paginaUsuarios = usuarioRepository.findAll(spec, pageable);
 
         Page<UserProfileResponse> paginaDto = paginaUsuarios.map(authService::mapearUsuarioAProfileResponse);
 
