@@ -533,13 +533,19 @@ public class AuthServiceImpl implements AuthService {
     public UserProfileResponse obtenerPerfil(Long usuarioId) {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con id: " + usuarioId));
+        return mapearUsuarioAProfileResponse(usuario);
+    }
 
+    @Override
+    public UserProfileResponse mapearUsuarioAProfileResponse(Usuario usuario) {
         Persona persona = usuario.getPersona();
         List<String> roles = obtenerRolesUsuario(usuario, null);
-        List<Long> arenaIds = usuario.getArenas().stream()
-                .map(ArenaUsuario::getArenaId)
-                .distinct()
-                .collect(Collectors.toList());
+        List<Long> arenaIds = usuario.getArenas() != null
+                ? usuario.getArenas().stream()
+                        .map(ArenaUsuario::getArenaId)
+                        .distinct()
+                        .collect(Collectors.toList())
+                : Collections.emptyList();
 
         return UserProfileResponse.builder()
                 .usuarioId(usuario.getId())
@@ -548,17 +554,17 @@ public class AuthServiceImpl implements AuthService {
                 .ssoProvider(usuario.getSsoProvider())
                 .tcposClientId(usuario.getTcposClientId())
                 .estadoId(usuario.getEstadoId())
-                .personaId(persona.getId())
-                .nombres(persona.getNombres())
-                .apellidos(persona.getApellidos())
-                .tipoDocumentoId(persona.getTipoDocumentoId())
-                .numeroDocumento(persona.getNumeroDocumento())
-                .email(persona.getEmail())
-                .telefono(persona.getTelefono())
-                .paisId(persona.getPaisId())
-                .departamentoId(persona.getDepartamentoId())
-                .ciudadId(persona.getCiudadId())
-                .direccion(persona.getDireccion())
+                .personaId(persona != null ? persona.getId() : null)
+                .nombres(persona != null ? persona.getNombres() : null)
+                .apellidos(persona != null ? persona.getApellidos() : null)
+                .tipoDocumentoId(persona != null ? persona.getTipoDocumentoId() : null)
+                .numeroDocumento(persona != null ? persona.getNumeroDocumento() : null)
+                .email(persona != null ? persona.getEmail() : null)
+                .telefono(persona != null ? persona.getTelefono() : null)
+                .paisId(persona != null ? persona.getPaisId() : null)
+                .departamentoId(persona != null ? persona.getDepartamentoId() : null)
+                .ciudadId(persona != null ? persona.getCiudadId() : null)
+                .direccion(persona != null ? persona.getDireccion() : null)
                 .roles(roles)
                 .scopes(Collections.singletonList("api:access"))
                 .arenaIds(arenaIds)
