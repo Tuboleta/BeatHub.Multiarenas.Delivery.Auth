@@ -79,5 +79,4 @@ public class UsuarioController {
         return ResponseEntity.ok(ApiResponse.success("Usuario encontrado", response));
     }
 }
-
 }
