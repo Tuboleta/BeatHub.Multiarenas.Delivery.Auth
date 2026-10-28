@@ -1,6 +1,6 @@
 # Microservicio de Autenticación y Autorización (Auth Service) - BeatHub Multiarenas
 
-Microservicio del ecosistema **BeatHub Multiarenas** desarrollado en **Spring Boot 4.1.1 (Java 25 LTS)** encargado de la autenticación, emisión de tokens JWT, registro de usuarios y personas, roles y scopes.
+Microservicio del ecosistema **BeatHub Multiarenas** desarrollado en **Spring Boot 4.1.1 (Java 25 LTS)** encargado de la autenticación, emisión de tokens JWT, registro de usuarios y personas, roles, asignación multi-arena y scopes.
 
 ---
 
@@ -14,15 +14,18 @@ Microservicio del ecosistema **BeatHub Multiarenas** desarrollado en **Spring Bo
 
 ## 🌐 Endpoints Principales
 
-| Recurso | Método | URL | Descripción |
-| :--- | :--- | :--- | :--- |
-| **Swagger UI** | `GET` | `http://localhost:8080/api/v1/auth/swagger-ui.html` | Documentación interactiva |
-| **Status** | `GET` | `http://localhost:8080/api/v1/auth/status` | Verificación de salud |
-| **Login** | `POST` | `http://localhost:8080/api/v1/auth/auth/login` | Autenticación y emisión de JWT |
-| **Registro** | `POST` | `http://localhost:8080/api/v1/auth/auth/registro` | Registro de persona y usuario |
-| **Validar Token** | `POST` | `http://localhost:8080/api/v1/auth/auth/validate` | Introspección y validación de JWT |
-| **Perfil Actual** | `GET` | `http://localhost:8080/api/v1/auth/auth/me` | Obtener datos del usuario autenticado |
-| **Consultar Usuario** | `GET` | `http://localhost:8080/api/v1/auth/usuarios/{id}` | Consulta por ID |
+| Recurso | Método | URL Downstream (8080) | URL Gateway (8000) | Roles Permitidos | Descripción |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Swagger UI** | `GET` | `http://localhost:8080/swagger-ui.html` | `http://localhost:8000/api/v1/auth/swagger-ui.html` | Público | Documentación interactiva OpenAPI |
+| **Status** | `GET` | `http://localhost:8080/status` | `http://localhost:8000/api/v1/auth/status` | Público | Verificación de salud |
+| **Login BackOffice** | `POST` | `http://localhost:8080/backoffice/login` | `http://localhost:8000/api/v1/auth/backoffice/login` | Público | Autenticación con usuario y contraseña |
+| **Login SSO Azure** | `POST` | `http://localhost:8080/sso/login` | `http://localhost:8000/api/v1/auth/sso/login` | Público | Autenticación con token Azure AD / TuBoleta |
+| **Validar Token** | `POST` | `http://localhost:8080/validate` | `http://localhost:8000/api/v1/auth/validate` | Público | Introspección y validación de claims JWT |
+| **Perfil Actual** | `GET` | `http://localhost:8080/me` | `http://localhost:8000/api/v1/auth/me` | Autenticado | Obtener datos del usuario autenticado |
+| **Listar Usuarios** | `GET` | `http://localhost:8080/usuarios` | `http://localhost:8000/api/v1/auth/usuarios` | `SUPER_ADMIN`, `ADMIN_ARENA`, `BACKOFFICE` | Consulta paginada con filtros (`arenaId`, `rol`, `search`, `estadoId`) |
+| **Consultar Usuario ID** | `GET` | `http://localhost:8080/usuarios/{id}` | `http://localhost:8000/api/v1/auth/usuarios/{id}` | Admin o Mismo Usuario | Consulta por ID |
+| **Consultar por Username**| `GET` | `http://localhost:8080/usuarios/username/{username}` | `http://localhost:8000/api/v1/auth/usuarios/username/{username}` | Admin o Mismo Usuario | Consulta por nombre de usuario |
+| **Asignar Rol / Arena** | `POST` | `http://localhost:8080/usuarios/asignar-arena` | `http://localhost:8000/api/v1/auth/usuarios/asignar-arena` | `SUPER_ADMIN`, `ADMIN_ARENA`, `BACKOFFICE` | Dar de alta Runner o Admin de Arena |
 
 ---
 
