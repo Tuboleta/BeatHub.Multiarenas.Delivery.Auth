@@ -1,5 +1,6 @@
 package com.beathub.multiarenas.delivery.auth.service.business;
 
+import com.beathub.multiarenas.delivery.auth.dto.request.ActualizarShopUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.AsignarArenaUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.LoginRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.RefreshTokenRequest;
@@ -30,4 +31,6 @@ public interface AuthService {
     AuthResponse refreshTokenConRefreshToken(RefreshTokenRequest request);
 
     UserProfileResponse asignarArenaUsuario(AsignarArenaUsuarioRequest request);
+
+    UserProfileResponse actualizarShopUsuario(Long usuarioId, Long arenaId, ActualizarShopUsuarioRequest request);
 }

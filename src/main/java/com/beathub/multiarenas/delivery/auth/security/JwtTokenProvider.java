@@ -1,11 +1,7 @@
 package com.beathub.multiarenas.delivery.auth.security;
 
 import com.beathub.multiarenas.delivery.auth.config.JwtProperties;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.MalformedJwtException;
-import io.jsonwebtoken.UnsupportedJwtException;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SignatureException;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +24,7 @@ public class JwtTokenProvider {
         return Keys.hmacShaKeyFor(jwtProperties.getSecretKey().getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId, List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds, String clientType) {
+    public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId, List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds, String clientType, Long shopId, String shopNombre) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtProperties.getExpirationMs());
 
@@ -58,11 +54,23 @@ public class JwtTokenProvider {
             builder.claim("currentArenaId", currentArenaId);
         }
 
+        if (shopId != null) {
+            builder.claim("shopId", shopId);
+        }
+
+        if (shopNombre != null && !shopNombre.isBlank()) {
+            builder.claim("shopNombre", shopNombre);
+        }
+
         return builder.signWith(getSigningKey()).compact();
     }
 
+    public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId, List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds, String clientType) {
+        return generarToken(usuarioId, username, email, ssoId, personaId, roles, scopes, currentArenaId, arenaIds, clientType, null, null);
+    }
+
     public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId, List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds) {
-        return generarToken(usuarioId, username, email, ssoId, personaId, roles, scopes, currentArenaId, arenaIds, null);
+        return generarToken(usuarioId, username, email, ssoId, personaId, roles, scopes, currentArenaId, arenaIds, null, null, null);
     }
 
     public String generarRefreshToken(Long usuarioId, String username, Long currentArenaId, String clientType) {
@@ -108,7 +116,9 @@ public class JwtTokenProvider {
                 userPrincipal.getScopes(),
                 userPrincipal.getCurrentArenaId(),
                 userPrincipal.getArenaIds(),
-                userPrincipal.getClientType()
+                userPrincipal.getClientType(),
+                userPrincipal.getShopId(),
+                userPrincipal.getShopNombre()
         );
     }
 

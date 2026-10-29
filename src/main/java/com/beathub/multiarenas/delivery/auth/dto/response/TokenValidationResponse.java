@@ -18,4 +18,6 @@ public class TokenValidationResponse {
     private List<String> scopes;
     private List<Long> arenaIds;
     private String clientType;
+    private Long shopId;
+    private String shopNombre;
 }

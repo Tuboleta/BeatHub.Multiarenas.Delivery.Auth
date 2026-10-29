@@ -1,6 +1,7 @@
 package com.beathub.multiarenas.delivery.auth.service.business.impl;
 
 import com.beathub.multiarenas.delivery.auth.config.JwtProperties;
+import com.beathub.multiarenas.delivery.auth.dto.request.ActualizarShopUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.AsignarArenaUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.ClientType;
 import com.beathub.multiarenas.delivery.auth.dto.request.LoginRequest;
@@ -98,6 +99,10 @@ public class AuthServiceImpl implements AuthService {
         List<String> roles = obtenerRolesUsuario(usuario, defaultArenaId);
         List<String> scopes = Collections.singletonList("api:access");
 
+        ArenaUsuario arenaUser = obtenerArenaUsuario(usuario, defaultArenaId);
+        Long resolvedShopId = arenaUser != null ? arenaUser.getShopId() : null;
+        String resolvedShopNombre = arenaUser != null ? arenaUser.getShopNombre() : null;
+
         String token = jwtTokenProvider.generarToken(
                 usuario.getId(),
                 usuario.getUsername(),
@@ -108,7 +113,9 @@ public class AuthServiceImpl implements AuthService {
                 scopes,
                 defaultArenaId,
                 arenaIds,
-                request.getClientType().name()
+                request.getClientType().name(),
+                resolvedShopId,
+                resolvedShopNombre
         );
 
         String refreshToken = jwtTokenProvider.generarRefreshToken(
@@ -137,7 +144,8 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException("El nombre de usuario ya se encuentra en uso");
         }
 
-        if (personaRepository.existsByTipoDocumentoIdAndNumeroDocumento(request.getTipoDocumentoId(), request.getNumeroDocumento())) {
+        if (personaRepository.existsByTipoDocumentoIdAndNumeroDocumento(request.getTipoDocumentoId(),
+                request.getNumeroDocumento())) {
             throw new BusinessException("El número de documento ya se encuentra registrado");
         }
 
@@ -169,9 +177,8 @@ public class AuthServiceImpl implements AuthService {
         usuario = usuarioRepository.save(usuario);
 
         // Asignar rol CLIENTE (ID 4) por defecto
-        Rol rolCliente = rolRepository.findByNombre("CLIENTE").orElseGet(() ->
-                rolRepository.save(Rol.builder().nombre("CLIENTE").descripcion("Cliente App").estadoId(1).build())
-        );
+        Rol rolCliente = rolRepository.findByNombre("CLIENTE").orElseGet(() -> rolRepository
+                .save(Rol.builder().nombre("CLIENTE").descripcion("Cliente App").estadoId(1).build()));
 
         if (request.getArenaId() != null) {
             ArenaUsuario arenaUsuario = ArenaUsuario.builder()
@@ -192,7 +199,8 @@ public class AuthServiceImpl implements AuthService {
 
         List<String> roles = Collections.singletonList("ROLE_CLIENTE");
         List<String> scopes = Collections.singletonList("api:access");
-        List<Long> arenaIds = request.getArenaId() != null ? Collections.singletonList(request.getArenaId()) : Collections.emptyList();
+        List<Long> arenaIds = request.getArenaId() != null ? Collections.singletonList(request.getArenaId())
+                : Collections.emptyList();
 
         String token = jwtTokenProvider.generarToken(
                 usuario.getId(),
@@ -203,14 +211,12 @@ public class AuthServiceImpl implements AuthService {
                 roles,
                 scopes,
                 request.getArenaId(),
-                arenaIds
-        );
+                arenaIds);
 
         String refreshToken = jwtTokenProvider.generarRefreshToken(
                 usuario.getId(),
                 usuario.getUsername(),
-                request.getArenaId()
-        );
+                request.getArenaId());
 
         return AuthResponse.builder()
                 .token(token)
@@ -381,6 +387,10 @@ public class AuthServiceImpl implements AuthService {
         List<String> roles = obtenerRolesUsuario(usuario, currentArena);
         List<String> scopes = Collections.singletonList("api:access");
 
+        ArenaUsuario arenaUser = obtenerArenaUsuario(usuario, currentArena);
+        Long resolvedShopId = arenaUser != null ? arenaUser.getShopId() : null;
+        String resolvedShopNombre = arenaUser != null ? arenaUser.getShopNombre() : null;
+
         String token = jwtTokenProvider.generarToken(
                 usuario.getId(),
                 usuario.getUsername(),
@@ -391,7 +401,9 @@ public class AuthServiceImpl implements AuthService {
                 scopes,
                 currentArena,
                 arenaIds,
-                clientType.name()
+                clientType.name(),
+                resolvedShopId,
+                resolvedShopNombre
         );
 
         String refreshToken = jwtTokenProvider.generarRefreshToken(
@@ -426,12 +438,15 @@ public class AuthServiceImpl implements AuthService {
         if (usuarioOpt.isPresent()) {
             usuario = usuarioOpt.get();
         } else {
-            // Si el usuario no existe en BeatHub, lo pre-creamos para cuando haga login con su SSO
+            // Si el usuario no existe en BeatHub, lo pre-creamos para cuando haga login con
+            // su SSO
             Persona persona = personaRepository.findByEmail(email).orElseGet(() -> {
                 String nombres = StringUtils.hasText(request.getNombres()) ? request.getNombres().trim() : "Usuario";
-                String apellidos = StringUtils.hasText(request.getApellidos()) ? request.getApellidos().trim() : "BeatHub";
+                String apellidos = StringUtils.hasText(request.getApellidos()) ? request.getApellidos().trim()
+                        : "BeatHub";
                 Integer tipoDoc = request.getTipoDocumentoId() != null ? request.getTipoDocumentoId() : 1;
-                String numDoc = StringUtils.hasText(request.getNumeroDocumento()) ? request.getNumeroDocumento().trim() : UUID.randomUUID().toString().substring(0, 10);
+                String numDoc = StringUtils.hasText(request.getNumeroDocumento()) ? request.getNumeroDocumento().trim()
+                        : UUID.randomUUID().toString().substring(0, 10);
 
                 Persona p = Persona.builder()
                         .nombres(nombres)
@@ -465,9 +480,28 @@ public class AuthServiceImpl implements AuthService {
             usuario = usuarioRepository.save(usuario);
         }
 
-        vincularRolArena(usuario, arenaId, rol);
+        vincularRolArena(usuario, arenaId, rol, request.getShopId(), request.getShopNombre());
 
         return obtenerPerfil(usuario.getId());
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = CACHE_USER_PROFILE, allEntries = true)
+    public UserProfileResponse actualizarShopUsuario(Long usuarioId, Long arenaId, ActualizarShopUsuarioRequest request) {
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + usuarioId));
+
+        ArenaUsuario arenaUsuario = usuario.getArenas().stream()
+                .filter(au -> arenaId.equals(au.getArenaId()))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("El usuario no está asignado a la arena con ID: " + arenaId));
+
+        arenaUsuario.setShopId(request != null ? request.getShopId() : null);
+        arenaUsuario.setShopNombre(request != null && StringUtils.hasText(request.getShopNombre()) ? request.getShopNombre().trim() : null);
+        arenaUsuarioRepository.save(arenaUsuario);
+
+        return mapearUsuarioAProfileResponse(usuario);
     }
 
     @Override
@@ -513,6 +547,18 @@ public class AuthServiceImpl implements AuthService {
 
         String clientType = claims.get("clientType", String.class);
 
+        Long shopId = null;
+        Object rawShopId = claims.get("shopId");
+        if (rawShopId instanceof Number num) {
+            shopId = num.longValue();
+        } else if (rawShopId instanceof String str && !str.isBlank()) {
+            try {
+                shopId = Long.parseLong(str);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        String shopNombre = claims.get("shopNombre", String.class);
+
         return TokenValidationResponse.builder()
                 .valid(true)
                 .usuarioId(usuarioId)
@@ -524,6 +570,8 @@ public class AuthServiceImpl implements AuthService {
                 .scopes(scopes)
                 .arenaIds(arenaIds)
                 .clientType(clientType)
+                .shopId(shopId)
+                .shopNombre(shopNombre)
                 .build();
     }
 
@@ -547,12 +595,21 @@ public class AuthServiceImpl implements AuthService {
                         .collect(Collectors.toList())
                 : Collections.emptyList();
 
+        ArenaUsuario shopAu = usuario.getArenas() != null ? usuario.getArenas().stream()
+                .filter(au -> au.getShopId() != null)
+                .findFirst()
+                .orElse(null) : null;
+        Long resolvedShopId = shopAu != null ? shopAu.getShopId() : null;
+        String resolvedShopNombre = shopAu != null ? shopAu.getShopNombre() : null;
+
         return UserProfileResponse.builder()
                 .usuarioId(usuario.getId())
                 .username(usuario.getUsername())
                 .ssoId(usuario.getSsoId())
                 .ssoProvider(usuario.getSsoProvider())
                 .tcposClientId(usuario.getTcposClientId())
+                .shopId(resolvedShopId)
+                .shopNombre(resolvedShopNombre)
                 .estadoId(usuario.getEstadoId())
                 .personaId(persona != null ? persona.getId() : null)
                 .nombres(persona != null ? persona.getNombres() : null)
@@ -598,6 +655,10 @@ public class AuthServiceImpl implements AuthService {
         List<String> roles = obtenerRolesUsuario(usuario, effectiveArena);
         List<String> scopes = Collections.singletonList("api:access");
 
+        ArenaUsuario arenaUser = obtenerArenaUsuario(usuario, effectiveArena);
+        Long resolvedShopId = arenaUser != null ? arenaUser.getShopId() : null;
+        String resolvedShopNombre = arenaUser != null ? arenaUser.getShopNombre() : null;
+
         String token = jwtTokenProvider.generarToken(
                 usuario.getId(),
                 usuario.getUsername(),
@@ -607,7 +668,10 @@ public class AuthServiceImpl implements AuthService {
                 roles,
                 scopes,
                 effectiveArena,
-                arenaIds
+                arenaIds,
+                null,
+                resolvedShopId,
+                resolvedShopNombre
         );
 
         String refreshToken = jwtTokenProvider.generarRefreshToken(
@@ -668,6 +732,10 @@ public class AuthServiceImpl implements AuthService {
         List<String> scopes = Collections.singletonList("api:access");
         String clientType = claims.get("clientType", String.class);
 
+        ArenaUsuario arenaUser = obtenerArenaUsuario(usuario, effectiveArena);
+        Long resolvedShopId = arenaUser != null ? arenaUser.getShopId() : null;
+        String resolvedShopNombre = arenaUser != null ? arenaUser.getShopNombre() : null;
+
         String newAccessToken = jwtTokenProvider.generarToken(
                 usuario.getId(),
                 usuario.getUsername(),
@@ -678,7 +746,9 @@ public class AuthServiceImpl implements AuthService {
                 scopes,
                 effectiveArena,
                 arenaIds,
-                clientType
+                clientType,
+                resolvedShopId,
+                resolvedShopNombre
         );
 
         String newRefreshToken = jwtTokenProvider.generarRefreshToken(
@@ -711,12 +781,14 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private boolean estaVinculadoAArena(Usuario usuario, Long arenaId) {
-        if (usuario.getArenas() == null) return false;
+        if (usuario.getArenas() == null)
+            return false;
         return usuario.getArenas().stream().anyMatch(au -> arenaId.equals(au.getArenaId()));
     }
 
     private boolean tieneRolEnArena(Usuario usuario, String rolBuscado, Long arenaId) {
-        if (usuario.getArenas() == null) return false;
+        if (usuario.getArenas() == null)
+            return false;
         String rolFormateado = "ROLE_" + rolBuscado.toUpperCase().replace("ROLE_", "");
 
         for (ArenaUsuario au : usuario.getArenas()) {
@@ -740,12 +812,28 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private Rol obtenerRolPorNombre(String rolNombre) {
-        return rolRepository.findByNombre(rolNombre).orElseGet(() ->
-                rolRepository.save(Rol.builder().nombre(rolNombre).descripcion("Rol " + rolNombre).estadoId(1).build())
-        );
+        return rolRepository.findByNombre(rolNombre).orElseGet(() -> rolRepository
+                .save(Rol.builder().nombre(rolNombre).descripcion("Rol " + rolNombre).estadoId(1).build()));
+    }
+
+    private ArenaUsuario obtenerArenaUsuario(Usuario usuario, Long arenaId) {
+        if (usuario.getArenas() == null || usuario.getArenas().isEmpty()) {
+            return null;
+        }
+        if (arenaId != null) {
+            return usuario.getArenas().stream()
+                    .filter(au -> arenaId.equals(au.getArenaId()))
+                    .findFirst()
+                    .orElse(null);
+        }
+        return usuario.getArenas().get(0);
     }
 
     private void vincularRolArena(Usuario usuario, Long arenaId, Rol rol) {
+        vincularRolArena(usuario, arenaId, rol, null, null);
+    }
+
+    private void vincularRolArena(Usuario usuario, Long arenaId, Rol rol, Long shopId, String shopNombre) {
         Optional<ArenaUsuario> arenaUsuarioOpt = usuario.getArenas().stream()
                 .filter(au -> arenaId.equals(au.getArenaId()))
                 .findFirst();
@@ -762,6 +850,14 @@ public class AuthServiceImpl implements AuthService {
             arenaUsuario = arenaUsuarioRepository.save(arenaUsuario);
             usuario.getArenas().add(arenaUsuario);
         }
+
+        if (shopId != null) {
+            arenaUsuario.setShopId(shopId);
+        }
+        if (StringUtils.hasText(shopNombre)) {
+            arenaUsuario.setShopNombre(shopNombre.trim());
+        }
+        arenaUsuario = arenaUsuarioRepository.save(arenaUsuario);
 
         boolean yaTieneRol = arenaUsuario.getRoles().stream()
                 .anyMatch(r -> r.getRol() != null && rol.getId() != null && rol.getId().equals(r.getRol().getId()));

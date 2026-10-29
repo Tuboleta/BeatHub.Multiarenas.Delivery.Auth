@@ -36,15 +36,26 @@ public class UserPrincipal implements UserDetails {
     private final Collection<? extends GrantedAuthority> authorities;
     private final boolean enabled;
     private final String clientType;
+    private final Long shopId;
+    private final String shopNombre;
 
     public static UserPrincipal create(Usuario usuario, Long activeArenaId) {
         List<GrantedAuthority> authorities = new ArrayList<>();
         List<Long> arenaIds = new ArrayList<>();
+        Long resolvedShopId = null;
+        String resolvedShopNombre = null;
 
         if (usuario.getArenas() != null) {
             for (ArenaUsuario au : usuario.getArenas()) {
                 if (au.getArenaId() != null) {
                     arenaIds.add(au.getArenaId());
+                }
+                if (activeArenaId != null && activeArenaId.equals(au.getArenaId())) {
+                    resolvedShopId = au.getShopId();
+                    resolvedShopNombre = au.getShopNombre();
+                } else if (activeArenaId == null && resolvedShopId == null && au.getShopId() != null) {
+                    resolvedShopId = au.getShopId();
+                    resolvedShopNombre = au.getShopNombre();
                 }
                 // Si se especifica una arena activa, o si es SUPER_ADMIN o pertenece a la arena
                 if (au.getRoles() != null) {
@@ -54,8 +65,10 @@ public class UserPrincipal implements UserDetails {
                             if (!roleName.startsWith("ROLE_")) {
                                 roleName = "ROLE_" + roleName;
                             }
-                            // Si es SUPER_ADMIN o BACKOFFICE o el rol pertenece a la arena activa (o no hay filtro)
-                            if (roleName.equals("ROLE_SUPER_ADMIN") || roleName.equals("ROLE_BACKOFFICE") || activeArenaId == null || activeArenaId.equals(au.getArenaId())) {
+                            // Si es SUPER_ADMIN o BACKOFFICE o el rol pertenece a la arena activa (o no hay
+                            // filtro)
+                            if (roleName.equals("ROLE_SUPER_ADMIN") || roleName.equals("ROLE_BACKOFFICE")
+                                    || activeArenaId == null || activeArenaId.equals(au.getArenaId())) {
                                 authorities.add(new SimpleGrantedAuthority(roleName));
                             }
                         }
@@ -82,6 +95,8 @@ public class UserPrincipal implements UserDetails {
                 .scopes(Collections.singletonList("api:access"))
                 .authorities(authorities.stream().distinct().collect(Collectors.toList()))
                 .enabled(isEnabled)
+                .shopId(resolvedShopId)
+                .shopNombre(resolvedShopNombre)
                 .build();
     }
 
@@ -104,12 +119,14 @@ public class UserPrincipal implements UserDetails {
         } else if (rawUsuarioId instanceof String str && !str.isBlank()) {
             try {
                 usuarioId = Long.parseLong(str);
-            } catch (NumberFormatException ignored) {}
+            } catch (NumberFormatException ignored) {
+            }
         }
         if (usuarioId == null && claims.getSubject() != null && !claims.getSubject().isBlank()) {
             try {
                 usuarioId = Long.parseLong(claims.getSubject());
-            } catch (NumberFormatException ignored) {}
+            } catch (NumberFormatException ignored) {
+            }
         }
 
         String username = claims.get("username", String.class);
@@ -122,7 +139,8 @@ public class UserPrincipal implements UserDetails {
         } else if (rawPersonaId instanceof String str && !str.isBlank()) {
             try {
                 personaId = Long.parseLong(str);
-            } catch (NumberFormatException ignored) {}
+            } catch (NumberFormatException ignored) {
+            }
         }
 
         Long currentArenaId = null;
@@ -175,6 +193,18 @@ public class UserPrincipal implements UserDetails {
 
         String clientType = claims.get("clientType", String.class);
 
+        Long shopId = null;
+        Object rawShopId = claims.get("shopId");
+        if (rawShopId instanceof Number num) {
+            shopId = num.longValue();
+        } else if (rawShopId instanceof String str && !str.isBlank()) {
+            try {
+                shopId = Long.parseLong(str);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        String shopNombre = claims.get("shopNombre", String.class);
+
         return UserPrincipal.builder()
                 .usuarioId(usuarioId)
                 .username(username)
@@ -188,6 +218,8 @@ public class UserPrincipal implements UserDetails {
                 .authorities(authorities)
                 .enabled(true)
                 .clientType(clientType)
+                .shopId(shopId)
+                .shopNombre(shopNombre)
                 .build();
     }
 

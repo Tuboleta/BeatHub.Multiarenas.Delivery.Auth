@@ -28,6 +28,12 @@ public class ArenaUsuario extends BaseAuditableEntity {
     @JoinColumn(name = "usuario_id", nullable = false)
     private Usuario usuario;
 
+    @Column(name = "shop_id")
+    private Long shopId;
+
+    @Column(name = "shop_nombre", length = 150)
+    private String shopNombre;
+
     @OneToMany(mappedBy = "arenaUsuario", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<RolArenaUsuario> roles = new ArrayList<>();

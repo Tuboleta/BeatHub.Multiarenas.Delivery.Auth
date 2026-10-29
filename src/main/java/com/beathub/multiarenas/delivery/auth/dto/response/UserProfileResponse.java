@@ -18,6 +18,8 @@ public class UserProfileResponse {
     private String ssoId;
     private String ssoProvider;
     private String tcposClientId;
+    private Long shopId;
+    private String shopNombre;
     private Integer estadoId;
     private Long personaId;
     private String nombres;
