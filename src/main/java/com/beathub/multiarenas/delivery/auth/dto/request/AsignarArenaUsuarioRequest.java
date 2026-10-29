@@ -16,7 +16,11 @@ public class AsignarArenaUsuarioRequest {
     private Long arenaId;
 
     @NotNull(message = "El identificador del rol (rolId) es obligatorio")
-    private Long rolId; // 1 = SUPER_ADMIN, 2 = ADMIN_ARENA, 3 = RUNNER, 4 = CLIENTE
+    private Long rolId; // 1 = SUPER_ADMIN, 2 = ADMIN_ARENA, 3 = RUNNER, 4 = CLIENTE, 5 = BACKOFFICE, 6 = BARRA
+
+    private Long shopId;
+
+    private String shopNombre;
 
     private String nombres;
 

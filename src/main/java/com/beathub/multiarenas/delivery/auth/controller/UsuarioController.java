@@ -1,5 +1,6 @@
 package com.beathub.multiarenas.delivery.auth.controller;
 
+import com.beathub.multiarenas.delivery.auth.dto.request.ActualizarShopUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.AsignarArenaUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.response.ApiResponse;
 import com.beathub.multiarenas.delivery.auth.dto.response.PagedResponse;
@@ -56,6 +57,18 @@ public class UsuarioController {
             @Valid @RequestBody AsignarArenaUsuarioRequest request) {
         UserProfileResponse response = authService.asignarArenaUsuario(request);
         return ResponseEntity.ok(ApiResponse.success("Usuario asignado a la arena exitosamente", response));
+    }
+
+    @PutMapping("/{usuarioId}/arenas/{arenaId}/shop")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA', 'BACKOFFICE')")
+    @Operation(summary = "Asignar o reasignar punto de venta / shop a un usuario en una arena",
+               description = "Permite a supervisores o administradores vincular, rotar o desvincular (shopId null) la barra asignada a un operador.")
+    public ResponseEntity<ApiResponse<UserProfileResponse>> actualizarShopUsuario(
+            @PathVariable("usuarioId") Long usuarioId,
+            @PathVariable("arenaId") Long arenaId,
+            @Valid @RequestBody ActualizarShopUsuarioRequest request) {
+        UserProfileResponse response = authService.actualizarShopUsuario(usuarioId, arenaId, request);
+        return ResponseEntity.ok(ApiResponse.success("Punto de venta actualizado exitosamente para el usuario en la arena", response));
     }
 
     @GetMapping("/{id}")
