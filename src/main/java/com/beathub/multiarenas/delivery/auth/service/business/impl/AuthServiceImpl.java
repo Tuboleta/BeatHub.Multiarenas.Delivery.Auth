@@ -863,6 +863,8 @@ public class AuthServiceImpl implements AuthService {
                 .anyMatch(r -> r.getRol() != null && rol.getId() != null && rol.getId().equals(r.getRol().getId()));
 
         if (!yaTieneRol) {
+            validarExclusividadRunnerYBarra(arenaUsuario, rol);
+
             RolArenaUsuario rolArena = RolArenaUsuario.builder()
                     .rol(rol)
                     .arenaUsuario(arenaUsuario)
@@ -871,6 +873,27 @@ public class AuthServiceImpl implements AuthService {
                     .build();
             arenaUsuario.getRoles().add(rolArena);
             arenaUsuarioRepository.save(arenaUsuario);
+        }
+    }
+
+    private void validarExclusividadRunnerYBarra(ArenaUsuario arenaUsuario, Rol nuevoRol) {
+        if (nuevoRol == null || nuevoRol.getNombre() == null || arenaUsuario == null || arenaUsuario.getRoles() == null) {
+            return;
+        }
+        String nuevoRolLimpio = nuevoRol.getNombre().toUpperCase().replace("ROLE_", "");
+        if (!nuevoRolLimpio.equals("RUNNER") && !nuevoRolLimpio.equals("BARRA")) {
+            return;
+        }
+
+        String rolIncompatible = nuevoRolLimpio.equals("RUNNER") ? "BARRA" : "RUNNER";
+        boolean tieneConflicto = arenaUsuario.getRoles().stream()
+                .anyMatch(r -> r.getRol() != null && r.getRol().getNombre() != null
+                        && r.getRol().getNombre().toUpperCase().replace("ROLE_", "").equals(rolIncompatible));
+
+        if (tieneConflicto) {
+            throw new BusinessException(String.format(
+                    "Incompatibilidad de roles en la PWA: Un usuario no puede tener simultáneamente los roles de RUNNER y BARRA en la misma arena (Arena ID: %d). Debe desvincular el rol %s antes de asignar %s.",
+                    arenaUsuario.getArenaId(), rolIncompatible, nuevoRolLimpio));
         }
     }
 

@@ -1,7 +1,9 @@
 package com.beathub.multiarenas.delivery.auth.controller;
 
 import com.beathub.multiarenas.delivery.auth.dto.request.ActualizarShopUsuarioRequest;
+import com.beathub.multiarenas.delivery.auth.dto.request.ActualizarUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.AsignarArenaUsuarioRequest;
+import com.beathub.multiarenas.delivery.auth.dto.request.CrearUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.response.ApiResponse;
 import com.beathub.multiarenas.delivery.auth.dto.response.PagedResponse;
 import com.beathub.multiarenas.delivery.auth.dto.response.UserProfileResponse;
@@ -17,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -30,6 +33,25 @@ public class UsuarioController {
 
     private final UsuarioService usuarioService;
     private final AuthService authService;
+
+    @PostMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA', 'BACKOFFICE')")
+    @Operation(summary = "Crear nuevo usuario desde BackOffice",
+               description = "Permite registrar un usuario con perfil de persona, credenciales opcionales y asignación inicial de rol, arena y barra física.")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Usuario creado exitosamente"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Datos de entrada inválidos o faltantes"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Token JWT faltante, inválido o expirado"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "No tiene permisos para registrar usuarios en la arena especificada o con el rol solicitado"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Rol o Arena no encontrados"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "Regla de negocio no satisfecha (ej. correo o documento ya registrados)")
+    })
+    public ResponseEntity<ApiResponse<UserProfileResponse>> crearUsuario(
+            @Valid @RequestBody CrearUsuarioRequest request) {
+        UserProfileResponse response = usuarioService.crearUsuario(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Usuario creado exitosamente", response));
+    }
 
     @GetMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA', 'BACKOFFICE')")
@@ -86,5 +108,44 @@ public class UsuarioController {
             @PathVariable("username") String username) {
         UserProfileResponse response = usuarioService.obtenerPorUsername(username);
         return ResponseEntity.ok(ApiResponse.success("Usuario encontrado", response));
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA', 'BACKOFFICE')")
+    @Operation(summary = "Editar usuario desde BackOffice",
+               description = "Permite actualizar datos de persona, credenciales, estado y asignaciones de arena, rol y barra.")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Usuario actualizado exitosamente"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Datos de entrada inválidos"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Token JWT inválido o expirado"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Sin permisos para editar el usuario"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Usuario, Rol o Arena no encontrado"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "Conflicto o incompatibilidad de roles (RUNNER vs BARRA)")
+    })
+    public ResponseEntity<ApiResponse<UserProfileResponse>> actualizarUsuario(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody ActualizarUsuarioRequest request) {
+        UserProfileResponse response = usuarioService.actualizarUsuario(id, request);
+        return ResponseEntity.ok(ApiResponse.success("Usuario actualizado exitosamente", response));
+    }
+
+    @PatchMapping("/{id}/estado")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA', 'BACKOFFICE')")
+    @Operation(summary = "Cambiar estado de un usuario (Activar/Inactivar)",
+               description = "Permite modificar el estado operativo (1 = Activo, 2 = Inactivo).")
+    public ResponseEntity<ApiResponse<Void>> cambiarEstado(
+            @PathVariable("id") Long id,
+            @Parameter(description = "Nuevo estado (1 = Activo, 2 = Inactivo)", example = "2") @RequestParam("estadoId") Integer estadoId) {
+        usuarioService.cambiarEstado(id, estadoId);
+        return ResponseEntity.ok(ApiResponse.success("Estado de usuario actualizado exitosamente", null));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA', 'BACKOFFICE')")
+    @Operation(summary = "Inactivar usuario (Soft delete)",
+               description = "Inactiva el usuario estableciendo su estadoId en 2.")
+    public ResponseEntity<ApiResponse<Void>> inactivarUsuario(@PathVariable("id") Long id) {
+        usuarioService.cambiarEstado(id, 2);
+        return ResponseEntity.ok(ApiResponse.success("Usuario inactivado exitosamente", null));
     }
 }
