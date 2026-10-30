@@ -3,9 +3,12 @@ package com.beathub.multiarenas.delivery.auth.controller;
 import com.beathub.multiarenas.delivery.auth.dto.request.ActualizarShopUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.ActualizarUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.AsignarArenaUsuarioRequest;
+import com.beathub.multiarenas.delivery.auth.dto.request.AsignarRunnerZonasRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.CrearUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.response.ApiResponse;
 import com.beathub.multiarenas.delivery.auth.dto.response.PagedResponse;
+import com.beathub.multiarenas.delivery.auth.dto.response.RunnerDisponibleResponse;
+import com.beathub.multiarenas.delivery.auth.dto.response.RunnerZonaDto;
 import com.beathub.multiarenas.delivery.auth.dto.response.UserProfileResponse;
 import com.beathub.multiarenas.delivery.auth.service.business.AuthService;
 import com.beathub.multiarenas.delivery.auth.service.business.UsuarioService;
@@ -91,6 +94,51 @@ public class UsuarioController {
             @Valid @RequestBody ActualizarShopUsuarioRequest request) {
         UserProfileResponse response = authService.actualizarShopUsuario(usuarioId, arenaId, request);
         return ResponseEntity.ok(ApiResponse.success("Punto de venta actualizado exitosamente para el usuario en la arena", response));
+    }
+
+    @PutMapping(value = {"/{usuarioId}/arenas/{arenaId}/zonas", "/{usuarioId}/zonas"})
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA', 'BACKOFFICE')")
+    @Operation(summary = "Asignar zonas de cobertura a un Runner (1 a 3 zonas con prioridad)",
+               description = "Permite asignar o actualizar las zonas de entrega asignadas a un usuario con rol RUNNER.")
+    public ResponseEntity<ApiResponse<UserProfileResponse>> asignarZonasRunner(
+            @PathVariable("usuarioId") Long usuarioId,
+            @PathVariable(value = "arenaId", required = false) Long arenaId,
+            @RequestHeader(value = "Content-Fi-Arena", required = false) Long arenaHeader,
+            @RequestParam(value = "arenaId", required = false) Long arenaParam,
+            @Valid @RequestBody AsignarRunnerZonasRequest request) {
+        Long resolvedArenaId = arenaId != null ? arenaId : (arenaHeader != null ? arenaHeader : arenaParam);
+        if (resolvedArenaId == null) {
+            throw new com.beathub.multiarenas.delivery.auth.exception.BusinessException("Debe especificar el arenaId en la ruta, en el parámetro arenaId o en el encabezado Content-Fi-Arena");
+        }
+        UserProfileResponse response = usuarioService.asignarZonasARunner(usuarioId, resolvedArenaId, request);
+        return ResponseEntity.ok(ApiResponse.success("Zonas asignadas exitosamente al runner", response));
+    }
+
+    @GetMapping(value = {"/{usuarioId}/arenas/{arenaId}/zonas", "/{usuarioId}/zonas"})
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA', 'BACKOFFICE') or #usuarioId == authentication.principal.usuarioId")
+    @Operation(summary = "Obtener zonas asignadas a un Runner")
+    public ResponseEntity<ApiResponse<java.util.List<RunnerZonaDto>>> obtenerZonasRunner(
+            @PathVariable("usuarioId") Long usuarioId,
+            @PathVariable(value = "arenaId", required = false) Long arenaId,
+            @RequestHeader(value = "Content-Fi-Arena", required = false) Long arenaHeader,
+            @RequestParam(value = "arenaId", required = false) Long arenaParam) {
+        Long resolvedArenaId = arenaId != null ? arenaId : (arenaHeader != null ? arenaHeader : arenaParam);
+        if (resolvedArenaId == null) {
+            throw new com.beathub.multiarenas.delivery.auth.exception.BusinessException("Debe especificar el arenaId en la ruta, en el parámetro arenaId o en el encabezado Content-Fi-Arena");
+        }
+        java.util.List<RunnerZonaDto> response = usuarioService.obtenerZonasDeRunner(usuarioId, resolvedArenaId);
+        return ResponseEntity.ok(ApiResponse.success("Zonas del runner recuperadas", response));
+    }
+
+    @GetMapping("/runners/disponibles")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN_ARENA', 'BACKOFFICE', 'BARRA')")
+    @Operation(summary = "Listar Runners disponibles zonificados",
+               description = "Consulta los runners activos asignados a una arena y zona física específica.")
+    public ResponseEntity<ApiResponse<java.util.List<RunnerDisponibleResponse>>> listarRunnersDisponibles(
+            @RequestParam("arenaId") Long arenaId,
+            @RequestParam(value = "zonaId", required = false) Long zonaId) {
+        java.util.List<RunnerDisponibleResponse> response = usuarioService.listarRunnersDisponibles(arenaId, zonaId);
+        return ResponseEntity.ok(ApiResponse.success("Runners disponibles recuperados", response));
     }
 
     @GetMapping("/{id}")
