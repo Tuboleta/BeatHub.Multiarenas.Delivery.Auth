@@ -1,13 +1,17 @@
 package com.beathub.multiarenas.delivery.auth.service.business.impl;
 
 import com.beathub.multiarenas.delivery.auth.dto.request.ActualizarUsuarioRequest;
+import com.beathub.multiarenas.delivery.auth.dto.request.AsignarRunnerZonasRequest;
 import com.beathub.multiarenas.delivery.auth.dto.request.CrearUsuarioRequest;
 import com.beathub.multiarenas.delivery.auth.dto.response.PagedResponse;
+import com.beathub.multiarenas.delivery.auth.dto.response.RunnerDisponibleResponse;
+import com.beathub.multiarenas.delivery.auth.dto.response.RunnerZonaDto;
 import com.beathub.multiarenas.delivery.auth.dto.response.UserProfileResponse;
 import com.beathub.multiarenas.delivery.auth.entity.ArenaUsuario;
 import com.beathub.multiarenas.delivery.auth.entity.Persona;
 import com.beathub.multiarenas.delivery.auth.entity.Rol;
 import com.beathub.multiarenas.delivery.auth.entity.RolArenaUsuario;
+import com.beathub.multiarenas.delivery.auth.entity.RunnerZona;
 import com.beathub.multiarenas.delivery.auth.entity.Usuario;
 import com.beathub.multiarenas.delivery.auth.exception.BadRequestException;
 import com.beathub.multiarenas.delivery.auth.exception.BusinessException;
@@ -16,6 +20,7 @@ import com.beathub.multiarenas.delivery.auth.exception.ResourceNotFoundException
 import com.beathub.multiarenas.delivery.auth.repository.ArenaUsuarioRepository;
 import com.beathub.multiarenas.delivery.auth.repository.PersonaRepository;
 import com.beathub.multiarenas.delivery.auth.repository.RolRepository;
+import com.beathub.multiarenas.delivery.auth.repository.RunnerZonaRepository;
 import com.beathub.multiarenas.delivery.auth.repository.UsuarioRepository;
 import com.beathub.multiarenas.delivery.auth.repository.specification.UsuarioSpecification;
 import com.beathub.multiarenas.delivery.auth.security.SecurityUtils;
@@ -31,7 +36,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.beathub.multiarenas.delivery.auth.config.RedisCacheConfig.CACHE_USER_PROFILE;
 
@@ -43,6 +49,7 @@ public class UsuarioServiceImpl implements UsuarioService {
     private final PersonaRepository personaRepository;
     private final RolRepository rolRepository;
     private final ArenaUsuarioRepository arenaUsuarioRepository;
+    private final RunnerZonaRepository runnerZonaRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthService authService;
 
@@ -479,5 +486,144 @@ public class UsuarioServiceImpl implements UsuarioService {
         Page<UserProfileResponse> paginaDto = paginaUsuarios.map(authService::mapearUsuarioAProfileResponse);
 
         return PagedResponse.from(paginaDto);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = CACHE_USER_PROFILE, allEntries = true)
+    public UserProfileResponse asignarZonasARunner(Long usuarioId, Long arenaId, AsignarRunnerZonasRequest request) {
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + usuarioId));
+
+        ArenaUsuario arenaUsuario = usuario.getArenas().stream()
+                .filter(au -> au.getArenaId().equals(arenaId))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("El usuario no está asignado a la arena ID: " + arenaId));
+
+        boolean tieneRolRunner = arenaUsuario.getRoles().stream()
+                .anyMatch(r -> r.getRol() != null && "RUNNER".equalsIgnoreCase(r.getRol().getNombre().replace("ROLE_", "")));
+
+        if (!tieneRolRunner) {
+            throw new BusinessException("El usuario debe tener el rol RUNNER asignado en la arena para configurar zonas de cobertura.");
+        }
+
+        if (request.getZonas() != null && request.getZonas().size() > 3) {
+            throw new BusinessException("Un runner no puede tener más de 3 zonas asignadas simultáneamente.");
+        }
+
+        // Eliminar asignaciones previas en esta arena
+        runnerZonaRepository.deleteByUsuarioIdAndArenaId(usuarioId, arenaId);
+
+        if (request.getZonas() != null && !request.getZonas().isEmpty()) {
+            List<RunnerZona> nuevasZonas = new ArrayList<>();
+            for (RunnerZonaDto dto : request.getZonas()) {
+                if (dto.getZonaId() != null) {
+                    RunnerZona rz = RunnerZona.builder()
+                            .usuario(usuario)
+                            .arenaId(arenaId)
+                            .zonaId(dto.getZonaId())
+                            .prioridad(dto.getPrioridad() != null ? dto.getPrioridad() : 1)
+                            .activo(dto.getActivo() != null ? dto.getActivo() : true)
+                            .estadoId(1)
+                            .build();
+                    nuevasZonas.add(rz);
+                }
+            }
+            runnerZonaRepository.saveAll(nuevasZonas);
+        }
+
+        UserProfileResponse response = authService.obtenerPerfil(usuarioId);
+        response.setRunnerZonas(obtenerZonasDeRunner(usuarioId, arenaId));
+        return response;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<RunnerZonaDto> obtenerZonasDeRunner(Long usuarioId, Long arenaId) {
+        return runnerZonaRepository.findByUsuarioIdAndArenaIdAndActivoTrueOrderByPrioridadAsc(usuarioId, arenaId)
+                .stream()
+                .map(rz -> RunnerZonaDto.builder()
+                        .zonaId(rz.getZonaId())
+                        .prioridad(rz.getPrioridad())
+                        .activo(rz.getActivo())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<RunnerDisponibleResponse> listarRunnersDisponibles(Long arenaId, Long zonaId) {
+        List<RunnerZona> runnersZonas = Collections.emptyList();
+        if (zonaId != null) {
+            runnersZonas = runnerZonaRepository.findActiveRunnersByArenaAndZona(arenaId, zonaId);
+        }
+
+        // Si no hay zonificados para esa zona específica, buscar si hay runners zonificados en la arena
+        if (runnersZonas.isEmpty()) {
+            runnersZonas = runnerZonaRepository.findByArenaIdAndActivoTrue(arenaId);
+        }
+
+        Map<Long, List<RunnerZona>> porUsuario = runnersZonas.stream()
+                .filter(rz -> rz.getUsuario() != null && Integer.valueOf(1).equals(rz.getUsuario().getEstadoId()))
+                .collect(Collectors.groupingBy(rz -> rz.getUsuario().getId()));
+
+        List<RunnerDisponibleResponse> resultado = new ArrayList<>();
+        for (Map.Entry<Long, List<RunnerZona>> entry : porUsuario.entrySet()) {
+            List<RunnerZona> lista = entry.getValue();
+            RunnerZona primero = lista.get(0);
+            Usuario u = primero.getUsuario();
+            Persona p = u.getPersona();
+
+            Integer prioridadConsultada = (zonaId != null)
+                    ? lista.stream()
+                            .filter(rz -> rz.getZonaId().equals(zonaId))
+                            .map(RunnerZona::getPrioridad)
+                            .findFirst()
+                            .orElse(3)
+                    : 1;
+
+            List<RunnerZonaDto> todasZonas = lista.stream()
+                    .map(rz -> RunnerZonaDto.builder()
+                            .zonaId(rz.getZonaId())
+                            .prioridad(rz.getPrioridad())
+                            .activo(rz.getActivo())
+                            .build())
+                    .collect(Collectors.toList());
+
+            resultado.add(RunnerDisponibleResponse.builder()
+                    .usuarioId(u.getId())
+                    .username(u.getUsername())
+                    .nombres(p != null ? p.getNombres() : u.getUsername())
+                    .apellidos(p != null ? p.getApellidos() : "")
+                    .telefono(p != null ? p.getTelefono() : "")
+                    .prioridadZona(prioridadConsultada)
+                    .disponible(true)
+                    .zonasAsignadas(todasZonas)
+                    .build());
+        }
+
+        // Si todavía no hay runners porque ningún runner ha sido zonificado en runner_zona,
+        // fallback a cualquier runner activo registrado en la arena
+        if (resultado.isEmpty()) {
+            List<Usuario> runnersGenerales = usuarioRepository.findAll(
+                    com.beathub.multiarenas.delivery.auth.repository.specification.UsuarioSpecification.conFiltros(arenaId, 1, "RUNNER", null)
+            );
+            for (Usuario u : runnersGenerales) {
+                Persona p = u.getPersona();
+                resultado.add(RunnerDisponibleResponse.builder()
+                        .usuarioId(u.getId())
+                        .username(u.getUsername())
+                        .nombres(p != null ? p.getNombres() : u.getUsername())
+                        .apellidos(p != null ? p.getApellidos() : "")
+                        .telefono(p != null ? p.getTelefono() : "")
+                        .prioridadZona(1)
+                        .disponible(true)
+                        .zonasAsignadas(Collections.emptyList())
+                        .build());
+            }
+        }
+
+        resultado.sort(Comparator.comparing(RunnerDisponibleResponse::getPrioridadZona));
+        return resultado;
     }
 }

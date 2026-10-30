@@ -52,6 +52,9 @@ class UsuarioServiceImplTest {
     private ArenaUsuarioRepository arenaUsuarioRepository;
 
     @Mock
+    private com.beathub.multiarenas.delivery.auth.repository.RunnerZonaRepository runnerZonaRepository;
+
+    @Mock
     private PasswordEncoder passwordEncoder;
 
     @Mock

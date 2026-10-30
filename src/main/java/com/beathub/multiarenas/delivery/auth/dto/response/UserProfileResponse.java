@@ -35,5 +35,6 @@ public class UserProfileResponse {
     private List<String> roles;
     private List<String> scopes;
     private List<Long> arenaIds;
+    private List<RunnerZonaDto> runnerZonas;
     private LocalDateTime creacionFecha;
 }
