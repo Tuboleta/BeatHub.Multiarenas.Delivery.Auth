@@ -15,8 +15,8 @@ RUN ./mvnw clean package -Dmaven.test.skip=true
 # =============================================================================
 # Stage 2: Runtime Image (Eclipse Temurin 25 JRE Alpine)
 # =============================================================================
-FROM eclipse-temurin:25-jre-alpine AS runner
-WORKDIR /app
+FROM eclipse-temurin:25-jre-alpine AS runner  
+WORKDIR /app 
 
 RUN addgroup -S beathub && adduser -S beathub -G beathub
 
@@ -31,3 +31,4 @@ ENV SERVER_PORT=8080 \
 EXPOSE 8080
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+ 
