@@ -20,6 +20,7 @@ import com.beathub.multiarenas.delivery.auth.exception.ResourceNotFoundException
 import com.beathub.multiarenas.delivery.auth.exception.UnauthorizedException;
 import com.beathub.multiarenas.delivery.auth.repository.*;
 import com.beathub.multiarenas.delivery.auth.security.JwtTokenProvider;
+import com.beathub.multiarenas.delivery.auth.security.SecurityUtils;
 import com.beathub.multiarenas.delivery.auth.dto.sso.AzureTokenClaims;
 import com.beathub.multiarenas.delivery.auth.service.business.AuthService;
 import com.beathub.multiarenas.delivery.auth.service.client.AdsSsoClient;
@@ -281,16 +282,20 @@ public class AuthServiceImpl implements AuthService {
         }
 
         String ssoId = azureClaims.getSubject().trim();
-        String email = StringUtils.hasText(azureClaims.getEmail())
+        String verifiedEmail = StringUtils.hasText(azureClaims.getEmail())
                 ? azureClaims.getEmail().trim().toLowerCase()
-                : request.getEmail().trim().toLowerCase();
+                : null;
+        String email = verifiedEmail != null
+                ? verifiedEmail
+                : (StringUtils.hasText(request.getEmail()) ? request.getEmail().trim().toLowerCase() : "");
         String ssoProvider = "TUBOLETA";
         ClientType clientType = request.getClientType() != null ? request.getClientType() : ClientType.USER_APP;
         Long targetArenaId = request.getArenaId();
 
         Optional<Usuario> usuarioOpt = usuarioRepository.findBySsoId(ssoId);
-        if (usuarioOpt.isEmpty()) {
-            usuarioOpt = usuarioRepository.findByPersonaEmail(email);
+        // H-07: Solo vincular automáticamente por email si proviene validado del token SSO (evitar account takeover)
+        if (usuarioOpt.isEmpty() && verifiedEmail != null) {
+            usuarioOpt = usuarioRepository.findByPersonaEmail(verifiedEmail);
         }
 
         Usuario usuario;
@@ -432,6 +437,19 @@ public class AuthServiceImpl implements AuthService {
         Rol rol = rolRepository.findById(rolId)
                 .orElseThrow(() -> new ResourceNotFoundException("Rol no encontrado con ID: " + rolId));
 
+        // C-10: Validar privilegios del operador para asignación de arena y rol
+        boolean isSuperAdmin = SecurityUtils.hasRole("ROLE_SUPER_ADMIN");
+        boolean isBackoffice = SecurityUtils.hasRole("ROLE_BACKOFFICE");
+        if (!isSuperAdmin && !isBackoffice) {
+            if (!SecurityUtils.hasArenaAccess(arenaId)) {
+                throw new ForbiddenException("No tiene permisos para asignar usuarios en la arena " + arenaId);
+            }
+            String nombreRol = rol.getNombre() != null ? rol.getNombre().toUpperCase() : "";
+            if (nombreRol.contains("SUPER_ADMIN") || nombreRol.contains("BACKOFFICE")) {
+                throw new ForbiddenException("No tiene permisos para asignar roles administrativos globales");
+            }
+        }
+
         Optional<Usuario> usuarioOpt = usuarioRepository.findByPersonaEmail(email);
         Usuario usuario;
 
@@ -491,6 +509,13 @@ public class AuthServiceImpl implements AuthService {
     public UserProfileResponse actualizarShopUsuario(Long usuarioId, Long arenaId, ActualizarShopUsuarioRequest request) {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + usuarioId));
+
+        // C-10: Validar permisos del operador sobre la arena
+        boolean isSuperAdmin = SecurityUtils.hasRole("ROLE_SUPER_ADMIN");
+        boolean isBackoffice = SecurityUtils.hasRole("ROLE_BACKOFFICE");
+        if (!isSuperAdmin && !isBackoffice && !SecurityUtils.hasArenaAccess(arenaId)) {
+            throw new ForbiddenException("No tiene permisos para modificar configuración de shops en la arena " + arenaId);
+        }
 
         ArenaUsuario arenaUsuario = usuario.getArenas().stream()
                 .filter(au -> arenaId.equals(au.getArenaId()))

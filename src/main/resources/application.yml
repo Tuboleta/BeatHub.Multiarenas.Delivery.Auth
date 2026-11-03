@@ -70,7 +70,7 @@ security:
       issuer: ${AZURE_SSO_ISSUER:https://ssopreprod.b2clogin.com/bea47667-153a-452f-9723-8e8b4071f126/v2.0/}
       validate-signature: ${AZURE_SSO_VALIDATE_SIGNATURE:true}
       validate-audience: ${AZURE_SSO_VALIDATE_AUDIENCE:true}
-      validate-issuer: ${AZURE_SSO_VALIDATE_ISSUER:false}
+      validate-issuer: ${AZURE_SSO_VALIDATE_ISSUER:true}
       clock-skew-seconds: ${AZURE_SSO_CLOCK_SKEW_SECONDS:120}
       cache-ttl-minutes: ${AZURE_SSO_CACHE_TTL_MINUTES:60}
 
