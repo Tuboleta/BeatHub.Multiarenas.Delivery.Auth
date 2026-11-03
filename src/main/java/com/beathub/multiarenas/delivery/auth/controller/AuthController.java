@@ -68,9 +68,8 @@ public class AuthController {
     @GetMapping("/me")
     @Operation(summary = "Obtener perfil del usuario autenticado", security = @SecurityRequirement(name = "Bearer Authentication"))
     public ResponseEntity<ApiResponse<UserProfileResponse>> me(
-            @AuthenticationPrincipal UserPrincipal principal,
-            @RequestHeader(value = "X-User-Id", required = false) Long headerUserId) {
-        Long usuarioId = resolveUserId(principal, headerUserId);
+            @AuthenticationPrincipal UserPrincipal principal) {
+        Long usuarioId = resolveUserId(principal);
         UserProfileResponse response = authService.obtenerPerfil(usuarioId);
         return ResponseEntity.ok(ApiResponse.success("Perfil de usuario recuperado", response));
     }
@@ -80,7 +79,6 @@ public class AuthController {
     public ResponseEntity<ApiResponse<AuthResponse>> refresh(
             @RequestBody(required = false) RefreshTokenRequest refreshRequest,
             @AuthenticationPrincipal UserPrincipal principal,
-            @RequestHeader(value = "X-User-Id", required = false) Long headerUserId,
             @RequestParam(value = "arenaId", required = false) Long arenaId) {
 
         if (refreshRequest != null && StringUtils.hasText(refreshRequest.getRefreshToken())) {
@@ -88,22 +86,22 @@ public class AuthController {
             return ResponseEntity.ok(ApiResponse.success("Token renovado exitosamente con refresh token", response));
         }
 
-        Long effectiveArenaId = (refreshRequest != null && refreshRequest.getArenaId() != null)
-                ? refreshRequest.getArenaId()
-                : arenaId;
-        Long usuarioId = resolveUserId(principal, headerUserId);
-        AuthResponse response = authService.refreshToken(usuarioId, effectiveArenaId);
-        return ResponseEntity.ok(ApiResponse.success("Token renovado exitosamente", response));
+        if (principal != null && principal.getUsuarioId() != null) {
+            Long effectiveArenaId = (refreshRequest != null && refreshRequest.getArenaId() != null)
+                    ? refreshRequest.getArenaId()
+                    : arenaId;
+            AuthResponse response = authService.refreshToken(principal.getUsuarioId(), effectiveArenaId);
+            return ResponseEntity.ok(ApiResponse.success("Token renovado exitosamente", response));
+        }
+
+        throw new UnauthorizedException("Usuario no autenticado o token expirado. Proporcione un refreshToken válido en el cuerpo de la petición.");
     }
 
-    private Long resolveUserId(UserPrincipal principal, Long headerUserId) {
+    private Long resolveUserId(UserPrincipal principal) {
         if (principal != null && principal.getUsuarioId() != null) {
             return principal.getUsuarioId();
         }
-        if (headerUserId != null) {
-            return headerUserId;
-        }
         return SecurityUtils.getCurrentUserId()
-                .orElseThrow(() -> new UnauthorizedException("Usuario no autenticado o token expirado. Proporcione un refreshToken válido en el cuerpo de la petición."));
+                .orElseThrow(() -> new UnauthorizedException("Usuario no autenticado o token expirado."));
     }
 }
