@@ -23,5 +23,7 @@ public class AzureTokenClaims {
     private String issuer;
     private Set<String> audience;
     private Date expiration;
+    private String numeroDocumento;
+    private Integer tipoDocumentoId;
     private Map<String, Object> rawClaims;
 }

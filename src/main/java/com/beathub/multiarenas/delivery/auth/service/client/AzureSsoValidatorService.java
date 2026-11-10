@@ -191,6 +191,9 @@ public class AzureSsoValidatorService {
             }
         }
 
+        String numeroDocumento = extractDocumentNumberFromClaims(claims);
+        Integer tipoDocumentoId = extractDocumentTypeFromClaims(claims);
+
         return AzureTokenClaims.builder()
                 .subject(subject)
                 .email(email)
@@ -200,8 +203,104 @@ public class AzureSsoValidatorService {
                 .issuer(issuer)
                 .audience(audience)
                 .expiration(expiration)
+                .numeroDocumento(numeroDocumento)
+                .tipoDocumentoId(tipoDocumentoId)
                 .rawClaims(claims)
                 .build();
+    }
+
+    private String extractDocumentNumberFromClaims(Claims claims) {
+        if (claims == null) return null;
+
+        String[] possibleDocKeys = {
+                "extension_id_card", "id_card", "extension_idCard", "idCard",
+                "extension_NumeroDocumento", "extension_numeroDocumento",
+                "extension_Documento", "extension_documento",
+                "extension_IdentificationNumber", "extension_identificationNumber",
+                "extension_identification_number", "extension_doc_number",
+                "numeroDocumento", "numero_documento",
+                "documento", "identification_number",
+                "identificationNumber", "national_id", "cedula", "dni"
+        };
+        for (String key : possibleDocKeys) {
+            Object val = claims.get(key);
+            if (val != null && StringUtils.hasText(val.toString())) {
+                String strVal = val.toString().trim();
+                if (!strVal.matches("^[0-9a-fA-F-]{32,36}$") && !strVal.toLowerCase().startsWith("tbl_")) {
+                    log.info("[AZURE SSO] Documento extraído de claim exacto '{}': {}", key, strVal);
+                    return strVal;
+                }
+            }
+        }
+
+        // Búsqueda dinámica en extensiones B2C (ej. extension_<appId>_id_card o extension_<appId>_NumeroDocumento)
+        for (Map.Entry<String, Object> entry : claims.entrySet()) {
+            String keyLower = entry.getKey().toLowerCase();
+            if (keyLower.contains("id_card") || keyLower.contains("idcard")
+                    || keyLower.contains("document") || keyLower.contains("identifi")
+                    || keyLower.contains("cedula") || keyLower.contains("nationalid") || keyLower.contains("dni")) {
+                if (!keyLower.contains("type") && !keyLower.contains("tipo")) {
+                    Object val = entry.getValue();
+                    if (val != null && StringUtils.hasText(val.toString())) {
+                        String strVal = val.toString().trim();
+                        if (!strVal.matches("^[0-9a-fA-F-]{32,36}$") && !strVal.toLowerCase().startsWith("tbl_")) {
+                            log.info("[AZURE SSO] Documento extraído de claim dinámico '{}': {}", entry.getKey(), strVal);
+                            return strVal;
+                        }
+                    }
+                }
+            }
+        }
+
+        log.debug("[AZURE SSO] No se encontró claim de número de documento. Claves presentes en token: {}", claims.keySet());
+        return null;
+    }
+
+    private Integer extractDocumentTypeFromClaims(Claims claims) {
+        if (claims == null) return null;
+
+        String[] possibleTypeKeys = {
+                "extension_document_type", "extension_documentType", "extension_DocumentType",
+                "extension_TipoDocumento", "extension_tipoDocumento",
+                "extension_TipoDocumentoId", "extension_tipoDocumentoId",
+                "tipoDocumentoId", "tipo_documento_id", "tipoDocumento",
+                "document_type", "documentType"
+        };
+        for (String key : possibleTypeKeys) {
+            Object val = claims.get(key);
+            if (val != null) {
+                Integer parsed = parseTipoDoc(val);
+                if (parsed != null) return parsed;
+            }
+        }
+
+        // Búsqueda dinámica en extensiones B2C de tipo
+        for (Map.Entry<String, Object> entry : claims.entrySet()) {
+            String keyLower = entry.getKey().toLowerCase();
+            if ((keyLower.contains("document") || keyLower.contains("identifi"))
+                    && (keyLower.contains("type") || keyLower.contains("tipo"))) {
+                Object val = entry.getValue();
+                if (val != null) {
+                    Integer parsed = parseTipoDoc(val);
+                    if (parsed != null) return parsed;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Integer parseTipoDoc(Object val) {
+        if (val == null) return null;
+        try {
+            return Integer.parseInt(val.toString().trim());
+        } catch (NumberFormatException e) {
+            String s = val.toString().trim().toUpperCase();
+            if ("CC".equals(s) || s.contains("CEDULA")) return 1;
+            if ("CE".equals(s)) return 2;
+            if (s.contains("PASAPORTE") || "PA".equals(s)) return 3;
+            if ("NIT".equals(s)) return 4;
+            return null;
+        }
     }
 
     /**
