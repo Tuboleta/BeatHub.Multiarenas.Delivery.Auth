@@ -230,8 +230,8 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthResponse ssoLogin(SsoLoginRequest request) {
-        log.info("==> [SSO LOGIN RECIBIDO] ssoId='{}', email='{}', clientType='{}', arenaId='{}', ssoTokenPresente={}",
-                request.getSsoId(), request.getEmail(), request.getClientType(), request.getArenaId(),
+        log.info("==> [SSO LOGIN RECIBIDO] ssoId='{}', email='{}', docReq='{}', clientType='{}', arenaId='{}', ssoTokenPresente={}",
+                request.getSsoId(), request.getEmail(), request.getNumeroDocumento(), request.getClientType(), request.getArenaId(),
                 StringUtils.hasText(request.getSsoToken()));
 
         if (request.getClientType() == ClientType.BACKOFFICE) {
@@ -251,12 +251,16 @@ public class AuthServiceImpl implements AuthService {
                     request.getEmail()
             );
 
+            String docLog = StringUtils.hasText(azureClaims.getNumeroDocumento())
+                    ? azureClaims.getNumeroDocumento()
+                    : (StringUtils.hasText(request.getNumeroDocumento()) ? request.getNumeroDocumento() : "N/A");
+
             appLoggerService.logIntegrationService(
                     request.getArenaId() != null ? String.valueOf(request.getArenaId()) : null,
                     2,
                     "AZURE_SSO_VALIDATE_TOKEN",
-                    "ssoId=" + request.getSsoId() + ", email=" + request.getEmail() + ", clientType=" + request.getClientType(),
-                    "Validación exitosa para sub=" + azureClaims.getSubject(),
+                    "ssoId=" + request.getSsoId() + ", email=" + request.getEmail() + ", clientType=" + request.getClientType() + ", doc=" + docLog,
+                    "Validación exitosa para sub=" + azureClaims.getSubject() + ", doc=" + docLog,
                     inicioProceso,
                     OffsetDateTime.now(),
                     Duration.between(inicioProceso, OffsetDateTime.now()).toMillis(),
@@ -291,6 +295,24 @@ public class AuthServiceImpl implements AuthService {
         String ssoProvider = "TUBOLETA";
         ClientType clientType = request.getClientType() != null ? request.getClientType() : ClientType.USER_APP;
         Long targetArenaId = request.getArenaId();
+
+        // Extracción segura del número y tipo de documento (evitando asignar ssoId / UUID como documento)
+        String resolvedNumeroDoc = null;
+        if (StringUtils.hasText(request.getNumeroDocumento())
+                && !request.getNumeroDocumento().trim().equalsIgnoreCase(ssoId)
+                && !request.getNumeroDocumento().trim().matches("^[0-9a-fA-F-]{32,36}$")) {
+            resolvedNumeroDoc = request.getNumeroDocumento().trim();
+        } else if (StringUtils.hasText(azureClaims.getNumeroDocumento())
+                && !azureClaims.getNumeroDocumento().trim().equalsIgnoreCase(ssoId)
+                && !azureClaims.getNumeroDocumento().trim().matches("^[0-9a-fA-F-]{32,36}$")) {
+            resolvedNumeroDoc = azureClaims.getNumeroDocumento().trim();
+        }
+
+        Integer resolvedTipoDocId = request.getTipoDocumentoId() != null
+                ? request.getTipoDocumentoId()
+                : (azureClaims.getTipoDocumentoId() != null ? azureClaims.getTipoDocumentoId() : 1);
+
+        log.info("==> [SSO DOC RESUELTO] ssoId='{}', doc='{}', tipoDocId={}", ssoId, resolvedNumeroDoc, resolvedTipoDocId);
 
         Optional<Usuario> usuarioOpt = usuarioRepository.findBySsoId(ssoId);
         // H-07: Solo vincular automáticamente por email si proviene validado del token SSO (evitar account takeover)
@@ -340,6 +362,8 @@ public class AuthServiceImpl implements AuthService {
                 }
             } else {
                 // Auto-aprovisionamiento JIT para cliente nuevo
+                final String finalDocNum = resolvedNumeroDoc;
+                final Integer finalTipoDocId = resolvedTipoDocId;
                 Persona persona = personaRepository.findByEmail(email).orElseGet(() -> {
                     String nombres = StringUtils.hasText(azureClaims.getGivenName()) ? azureClaims.getGivenName().trim()
                             : (StringUtils.hasText(azureClaims.getName()) ? azureClaims.getName().trim() : "Usuario");
@@ -348,8 +372,8 @@ public class AuthServiceImpl implements AuthService {
                     Persona p = Persona.builder()
                             .nombres(nombres)
                             .apellidos(apellidos)
-                            .tipoDocumentoId(1)
-                            .numeroDocumento(ssoId)
+                            .tipoDocumentoId(finalTipoDocId)
+                            .numeroDocumento(finalDocNum != null ? finalDocNum : "")
                             .email(email)
                             .arenaId(targetArenaId)
                             .estadoId(1)
@@ -380,6 +404,20 @@ public class AuthServiceImpl implements AuthService {
                     Rol rolCliente = obtenerRolPorNombre("CLIENTE");
                     vincularRolArena(usuario, targetArenaId, rolCliente);
                 }
+            }
+        }
+
+        // Actualización de número de documento en Persona SOLO si se resolvió un documento nuevo y válido
+        if (usuario.getPersona() != null && StringUtils.hasText(resolvedNumeroDoc)) {
+            Persona p = usuario.getPersona();
+            if (!resolvedNumeroDoc.equals(p.getNumeroDocumento())) {
+                log.info("[SSO LOGIN] Actualizando documento en Persona id={}: '{}' -> '{}', tipoDocId={}",
+                        p.getId(), p.getNumeroDocumento(), resolvedNumeroDoc, resolvedTipoDocId);
+                p.setNumeroDocumento(resolvedNumeroDoc);
+                if (resolvedTipoDocId != null) {
+                    p.setTipoDocumentoId(resolvedTipoDocId);
+                }
+                personaRepository.save(p);
             }
         }
 
