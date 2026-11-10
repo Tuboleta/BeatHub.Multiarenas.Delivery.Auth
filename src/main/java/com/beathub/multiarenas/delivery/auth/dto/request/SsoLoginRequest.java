@@ -32,4 +32,10 @@ public class SsoLoginRequest {
     @NotBlank(message = "El token de SSO (ssoToken) es obligatorio")
     @JsonAlias({"ssotoken", "ssoToken"})
     private String ssoToken;
+
+    @JsonAlias({"numeroDocumento", "numero_documento", "documento", "identificationNumber", "identification_number"})
+    private String numeroDocumento;
+
+    @JsonAlias({"tipoDocumentoId", "tipo_documento_id", "tipoDocumento", "identificationType"})
+    private Integer tipoDocumentoId;
 }
