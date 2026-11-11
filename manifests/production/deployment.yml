@@ -1,0 +1,77 @@
+apiVersion : apps/v1
+kind: Deployment
+metadata:
+  name: beathubmultiarenasdeliveryauth
+  namespace: multiarenas-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: beathubmultiarenasdeliveryauth
+  template:
+    metadata:
+      labels:
+        app: beathubmultiarenasdeliveryauth
+    spec:
+      imagePullSecrets:
+        - name: acr-pull-secret
+      containers:
+        - name: beathubmultiarenasdeliveryauth
+          image: beathubconnectposcontainer.azurecr.io/beathubmultiarenasdeliveryauth
+          ports:
+          - containerPort: 8080
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            - name: SERVER_SERVLET_CONTEXT_PATH
+              value: "/api/v1/auth"
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://bhpostgresqlbiteup.postgres.database.azure.com:5432/bite_up_prod?currentSchema=auth,public"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "tbpostgresa"
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: "NYz*bb*&8rrF1qxI"
+            - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+              value: "validate"
+            - name: SPRING_JPA_SHOW_SQL
+              value: "false"
+            - name: SPRING_FLYWAY_ENABLED
+              value: "true"
+            - name: CORS_ALLOWED_ORIGINS
+              value: "*"
+            - name: JWT_SECRET
+              value: "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
+            - name: JWT_ISSUER
+              value: "beathub-auth-service"
+            - name: AZURE_SSO_ENABLED
+              value: "true"
+            - name: AZURE_SSO_JWKS_URL
+              value: "https://ssopreprod.b2clogin.com/ssopreprod.onmicrosoft.com/b2c_1a_passwordless_signin-optpass/discovery/v2.0/keys"
+            - name: AZURE_SSO_WELL_KNOWN_URL
+              value: "https://ssopreprod.b2clogin.com/ssopreprod.onmicrosoft.com/B2C_1A_PASSWORDLESS_SIGNIN-OPTPASS/v2.0/.well-known/openid-configuration"
+            - name: AZURE_SSO_CLIENT_ID
+              value: "63f8ef93-042a-40eb-a2f0-ba7b574e5ea6"
+            - name: AZURE_SSO_ISSUER
+              value: "https://ssopreprod.b2clogin.com/bea47667-153a-452f-9723-8e8b4071f126/v2.0/"
+            - name: AZURE_SSO_VALIDATE_SIGNATURE
+              value: "true"
+            - name: AZURE_SSO_VALIDATE_AUDIENCE
+              value: "true"
+            - name: AZURE_SSO_VALIDATE_ISSUER
+              value: "false"
+            - name: AZURE_SSO_CLOCK_SKEW_SECONDS
+              value: "120"
+            - name: SPRING_DATA_REDIS_HOST
+              value: "redis.multiarenas-prod.svc.cluster.local"
+            - name: SPRING_DATA_REDIS_PORT
+              value: "6379"
+            - name: SPRING_DATA_REDIS_PASSWORD
+              value: ""
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"          
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+
