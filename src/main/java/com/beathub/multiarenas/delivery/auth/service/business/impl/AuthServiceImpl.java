@@ -76,10 +76,12 @@ public class AuthServiceImpl implements AuthService {
         validarEstadoUsuario(usuario);
 
         if (request.getClientType() != ClientType.BACKOFFICE) {
-            throw new BadRequestException("ClientType no permitido: La autenticación directa solo admite el contexto 'BACKOFFICE'. Los demás entornos deben autenticarse mediante SSO.");
+            throw new BadRequestException(
+                    "ClientType no permitido: La autenticación directa solo admite el contexto 'BACKOFFICE'. Los demás entornos deben autenticarse mediante SSO.");
         }
 
-        boolean esBackOffice = tieneRolEnArena(usuario, "BACKOFFICE", null) || tieneRolEnArena(usuario, "SUPER_ADMIN", null);
+        boolean esBackOffice = tieneRolEnArena(usuario, "BACKOFFICE", null)
+                || tieneRolEnArena(usuario, "SUPER_ADMIN", null);
         if (!esBackOffice) {
             throw new ForbiddenException("Acceso denegado: El usuario no cuenta con rol de BackOffice asignado");
         }
@@ -90,8 +92,8 @@ public class AuthServiceImpl implements AuthService {
                 .collect(Collectors.toList());
 
         Long targetArenaId = request.getArenaId();
-        if (targetArenaId != null && !arenaIds.contains(targetArenaId) 
-                && !tieneRolEnArena(usuario, "SUPER_ADMIN", null) 
+        if (targetArenaId != null && !arenaIds.contains(targetArenaId)
+                && !tieneRolEnArena(usuario, "SUPER_ADMIN", null)
                 && !tieneRolEnArena(usuario, "BACKOFFICE", null)) {
             throw new ForbiddenException("No tienes permisos para operar en la arena solicitada.");
         }
@@ -116,15 +118,13 @@ public class AuthServiceImpl implements AuthService {
                 arenaIds,
                 request.getClientType().name(),
                 resolvedShopId,
-                resolvedShopNombre
-        );
+                resolvedShopNombre);
 
         String refreshToken = jwtTokenProvider.generarRefreshToken(
                 usuario.getId(),
                 usuario.getUsername(),
                 defaultArenaId,
-                request.getClientType().name()
-        );
+                request.getClientType().name());
 
         return AuthResponse.builder()
                 .token(token)
@@ -356,6 +356,35 @@ public class AuthServiceImpl implements AuthService {
                 validarEstadoUsuario(usuario);
                 vincularSsoSiFalta(usuario, ssoId, ssoProvider);
 
+                Persona persona = usuario.getPersona();
+                if (persona != null) {
+                    boolean personaUpdated = false;
+                    String ssoNombres = StringUtils.hasText(azureClaims.getGivenName()) ? azureClaims.getGivenName().trim()
+                            : (StringUtils.hasText(request.getNombres()) ? request.getNombres().trim() : null);
+                    String ssoApellidos = StringUtils.hasText(azureClaims.getFamilyName()) ? azureClaims.getFamilyName().trim()
+                            : (StringUtils.hasText(request.getApellidos()) ? request.getApellidos().trim() : null);
+
+                    if (!StringUtils.hasText(ssoApellidos) && StringUtils.hasText(azureClaims.getName())) {
+                        String[] parts = azureClaims.getName().trim().split("\\s+", 2);
+                        if (parts.length > 1) {
+                            if (!StringUtils.hasText(ssoNombres)) ssoNombres = parts[0];
+                            ssoApellidos = parts[1];
+                        }
+                    }
+
+                    if (StringUtils.hasText(ssoNombres) && (persona.getNombres() == null || persona.getNombres().isBlank() || "Usuario".equalsIgnoreCase(persona.getNombres()))) {
+                        persona.setNombres(ssoNombres);
+                        personaUpdated = true;
+                    }
+                    if (StringUtils.hasText(ssoApellidos) && (persona.getApellidos() == null || persona.getApellidos().isBlank() || "TuBoleta".equalsIgnoreCase(persona.getApellidos()))) {
+                        persona.setApellidos(ssoApellidos);
+                        personaUpdated = true;
+                    }
+                    if (personaUpdated) {
+                        personaRepository.save(persona);
+                    }
+                }
+
                 if (targetArenaId != null && !estaVinculadoAArena(usuario, targetArenaId)) {
                     Rol rolCliente = obtenerRolPorNombre("CLIENTE");
                     vincularRolArena(usuario, targetArenaId, rolCliente);
@@ -366,8 +395,23 @@ public class AuthServiceImpl implements AuthService {
                 final Integer finalTipoDocId = resolvedTipoDocId;
                 Persona persona = personaRepository.findByEmail(email).orElseGet(() -> {
                     String nombres = StringUtils.hasText(azureClaims.getGivenName()) ? azureClaims.getGivenName().trim()
-                            : (StringUtils.hasText(azureClaims.getName()) ? azureClaims.getName().trim() : "Usuario");
-                    String apellidos = StringUtils.hasText(azureClaims.getFamilyName()) ? azureClaims.getFamilyName().trim() : "TuBoleta";
+                            : (StringUtils.hasText(request.getNombres()) ? request.getNombres().trim() : null);
+                    String apellidos = StringUtils.hasText(azureClaims.getFamilyName()) ? azureClaims.getFamilyName().trim()
+                            : (StringUtils.hasText(request.getApellidos()) ? request.getApellidos().trim() : null);
+
+                    if (!StringUtils.hasText(apellidos) && StringUtils.hasText(azureClaims.getName())) {
+                        String[] parts = azureClaims.getName().trim().split("\\s+", 2);
+                        if (parts.length > 1) {
+                            if (!StringUtils.hasText(nombres)) nombres = parts[0];
+                            apellidos = parts[1];
+                        }
+                    }
+                    if (!StringUtils.hasText(nombres)) {
+                        nombres = StringUtils.hasText(azureClaims.getName()) ? azureClaims.getName().trim() : "Usuario";
+                    }
+                    if (!StringUtils.hasText(apellidos)) {
+                        apellidos = "TuBoleta";
+                    }
 
                     Persona p = Persona.builder()
                             .nombres(nombres)
@@ -375,6 +419,8 @@ public class AuthServiceImpl implements AuthService {
                             .tipoDocumentoId(finalTipoDocId)
                             .numeroDocumento(finalDocNum != null ? finalDocNum : "")
                             .email(email)
+                            .direccion(StringUtils.hasText(request.getDireccion()) ? request.getDireccion().trim() : null)
+                            .telefono(StringUtils.hasText(request.getTelefono()) ? request.getTelefono().trim() : null)
                             .arenaId(targetArenaId)
                             .estadoId(1)
                             .build();
@@ -407,16 +453,30 @@ public class AuthServiceImpl implements AuthService {
             }
         }
 
-        // Actualización de número de documento en Persona SOLO si se resolvió un documento nuevo y válido
-        if (usuario.getPersona() != null && StringUtils.hasText(resolvedNumeroDoc)) {
+        // Actualización de datos en Persona si se resolvieron datos nuevos y válidos del SSO
+        if (usuario.getPersona() != null) {
             Persona p = usuario.getPersona();
-            if (!resolvedNumeroDoc.equals(p.getNumeroDocumento())) {
+            boolean modificado = false;
+            if (StringUtils.hasText(resolvedNumeroDoc) && !resolvedNumeroDoc.equals(p.getNumeroDocumento())) {
                 log.info("[SSO LOGIN] Actualizando documento en Persona id={}: '{}' -> '{}', tipoDocId={}",
                         p.getId(), p.getNumeroDocumento(), resolvedNumeroDoc, resolvedTipoDocId);
                 p.setNumeroDocumento(resolvedNumeroDoc);
                 if (resolvedTipoDocId != null) {
                     p.setTipoDocumentoId(resolvedTipoDocId);
                 }
+                modificado = true;
+            }
+            if (StringUtils.hasText(request.getDireccion()) && (p.getDireccion() == null || !p.getDireccion().equals(request.getDireccion().trim()))) {
+                log.info("[SSO LOGIN] Actualizando dirección en Persona id={}: '{}'", p.getId(), request.getDireccion().trim());
+                p.setDireccion(request.getDireccion().trim());
+                modificado = true;
+            }
+            if (StringUtils.hasText(request.getTelefono()) && (p.getTelefono() == null || !p.getTelefono().equals(request.getTelefono().trim()))) {
+                log.info("[SSO LOGIN] Actualizando teléfono en Persona id={}: '{}'", p.getId(), request.getTelefono().trim());
+                p.setTelefono(request.getTelefono().trim());
+                modificado = true;
+            }
+            if (modificado) {
                 personaRepository.save(p);
             }
         }
@@ -544,7 +604,8 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     @CacheEvict(value = CACHE_USER_PROFILE, allEntries = true)
-    public UserProfileResponse actualizarShopUsuario(Long usuarioId, Long arenaId, ActualizarShopUsuarioRequest request) {
+    public UserProfileResponse actualizarShopUsuario(Long usuarioId, Long arenaId,
+            ActualizarShopUsuarioRequest request) {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + usuarioId));
 
@@ -552,16 +613,20 @@ public class AuthServiceImpl implements AuthService {
         boolean isSuperAdmin = SecurityUtils.hasRole("ROLE_SUPER_ADMIN");
         boolean isBackoffice = SecurityUtils.hasRole("ROLE_BACKOFFICE");
         if (!isSuperAdmin && !isBackoffice && !SecurityUtils.hasArenaAccess(arenaId)) {
-            throw new ForbiddenException("No tiene permisos para modificar configuración de shops en la arena " + arenaId);
+            throw new ForbiddenException(
+                    "No tiene permisos para modificar configuración de shops en la arena " + arenaId);
         }
 
         ArenaUsuario arenaUsuario = usuario.getArenas().stream()
                 .filter(au -> arenaId.equals(au.getArenaId()))
                 .findFirst()
-                .orElseThrow(() -> new ResourceNotFoundException("El usuario no está asignado a la arena con ID: " + arenaId));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "El usuario no está asignado a la arena con ID: " + arenaId));
 
         arenaUsuario.setShopId(request != null ? request.getShopId() : null);
-        arenaUsuario.setShopNombre(request != null && StringUtils.hasText(request.getShopNombre()) ? request.getShopNombre().trim() : null);
+        arenaUsuario.setShopNombre(
+                request != null && StringUtils.hasText(request.getShopNombre()) ? request.getShopNombre().trim()
+                        : null);
         arenaUsuarioRepository.save(arenaUsuario);
 
         return mapearUsuarioAProfileResponse(usuario);
@@ -706,8 +771,8 @@ public class AuthServiceImpl implements AuthService {
                 .collect(Collectors.toList());
 
         Long effectiveArena = newArenaId;
-        if (effectiveArena != null && !arenaIds.contains(effectiveArena) 
-                && !tieneRolEnArena(usuario, "SUPER_ADMIN", null) 
+        if (effectiveArena != null && !arenaIds.contains(effectiveArena)
+                && !tieneRolEnArena(usuario, "SUPER_ADMIN", null)
                 && !tieneRolEnArena(usuario, "BACKOFFICE", null)) {
             throw new ForbiddenException("No tienes permisos para operar en la arena solicitada.");
         }
@@ -734,14 +799,12 @@ public class AuthServiceImpl implements AuthService {
                 arenaIds,
                 null,
                 resolvedShopId,
-                resolvedShopNombre
-        );
+                resolvedShopNombre);
 
         String refreshToken = jwtTokenProvider.generarRefreshToken(
                 usuario.getId(),
                 usuario.getUsername(),
-                effectiveArena
-        );
+                effectiveArena);
 
         return AuthResponse.builder()
                 .token(token)
@@ -777,8 +840,8 @@ public class AuthServiceImpl implements AuthService {
                 .collect(Collectors.toList());
 
         Long effectiveArena = request.getArenaId();
-        if (effectiveArena != null && !arenaIds.contains(effectiveArena) 
-                && !tieneRolEnArena(usuario, "SUPER_ADMIN", null) 
+        if (effectiveArena != null && !arenaIds.contains(effectiveArena)
+                && !tieneRolEnArena(usuario, "SUPER_ADMIN", null)
                 && !tieneRolEnArena(usuario, "BACKOFFICE", null)) {
             throw new ForbiddenException("No tienes permisos para operar en la arena solicitada.");
         }
@@ -811,15 +874,13 @@ public class AuthServiceImpl implements AuthService {
                 arenaIds,
                 clientType,
                 resolvedShopId,
-                resolvedShopNombre
-        );
+                resolvedShopNombre);
 
         String newRefreshToken = jwtTokenProvider.generarRefreshToken(
                 usuario.getId(),
                 usuario.getUsername(),
                 effectiveArena,
-                clientType
-        );
+                clientType);
 
         return AuthResponse.builder()
                 .token(newAccessToken)
@@ -940,7 +1001,8 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private void validarExclusividadRunnerYBarra(ArenaUsuario arenaUsuario, Rol nuevoRol) {
-        if (nuevoRol == null || nuevoRol.getNombre() == null || arenaUsuario == null || arenaUsuario.getRoles() == null) {
+        if (nuevoRol == null || nuevoRol.getNombre() == null || arenaUsuario == null
+                || arenaUsuario.getRoles() == null) {
             return;
         }
         String nuevoRolLimpio = nuevoRol.getNombre().toUpperCase().replace("ROLE_", "");
