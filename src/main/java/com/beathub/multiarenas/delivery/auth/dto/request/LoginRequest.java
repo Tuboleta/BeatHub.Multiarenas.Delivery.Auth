@@ -17,20 +17,20 @@ import lombok.NoArgsConstructor;
 public class LoginRequest {
 
     @NotBlank(message = "El username o email es obligatorio")
-    @Schema(description = "Nombre de usuario o correo electrónico", example = "backoffice")
-    @JsonAlias({"username", "email", "usuario"})
+    @Schema(description = "Nombre de usuario o correo electrónico", example = "usuario_backoffice")
+    @JsonAlias({ "username", "email", "usuario" })
     private String login;
 
     @NotBlank(message = "La contraseña es obligatoria")
-    @Schema(description = "Contraseña en texto plano", example = "Admin12345!")
+    @Schema(description = "Contraseña en texto plano", example = "••••••••••••")
     private String password;
 
     @Schema(description = "ID opcional de la arena en la cual operar", example = "1")
-    @JsonAlias({"arena", "arena_id"})
+    @JsonAlias({ "arena", "arena_id" })
     private Long arenaId;
 
     @NotNull(message = "El clientType es obligatorio y debe ser 'BACKOFFICE'")
     @Schema(description = "Tipo de cliente (obligatorio: BACKOFFICE)", example = "BACKOFFICE")
-    @JsonAlias({"client_type", "clienttype"})
+    @JsonAlias({ "client_type", "clienttype" })
     private ClientType clientType;
 }
