@@ -24,7 +24,9 @@ public class JwtTokenProvider {
         return Keys.hmacShaKeyFor(jwtProperties.getSecretKey().getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId, List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds, String clientType, Long shopId, String shopNombre) {
+    public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId,
+            List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds, String clientType,
+            Long shopId, String shopNombre) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtProperties.getExpirationMs());
 
@@ -33,6 +35,7 @@ public class JwtTokenProvider {
                 .issuer(jwtProperties.getIssuer())
                 .issuedAt(now)
                 .expiration(expiryDate)
+                .claim("tokenType", "ACCESS")
                 .claim("usuarioId", usuarioId)
                 .claim("id", usuarioId)
                 .claim("username", username)
@@ -65,12 +68,16 @@ public class JwtTokenProvider {
         return builder.signWith(getSigningKey()).compact();
     }
 
-    public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId, List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds, String clientType) {
-        return generarToken(usuarioId, username, email, ssoId, personaId, roles, scopes, currentArenaId, arenaIds, clientType, null, null);
+    public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId,
+            List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds, String clientType) {
+        return generarToken(usuarioId, username, email, ssoId, personaId, roles, scopes, currentArenaId, arenaIds,
+                clientType, null, null);
     }
 
-    public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId, List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds) {
-        return generarToken(usuarioId, username, email, ssoId, personaId, roles, scopes, currentArenaId, arenaIds, null, null, null);
+    public String generarToken(Long usuarioId, String username, String email, String ssoId, Long personaId,
+            List<String> roles, List<String> scopes, Long currentArenaId, List<Long> arenaIds) {
+        return generarToken(usuarioId, username, email, ssoId, personaId, roles, scopes, currentArenaId, arenaIds, null,
+                null, null);
     }
 
     public String generarRefreshToken(Long usuarioId, String username, Long currentArenaId, String clientType) {
@@ -118,8 +125,7 @@ public class JwtTokenProvider {
                 userPrincipal.getArenaIds(),
                 userPrincipal.getClientType(),
                 userPrincipal.getShopId(),
-                userPrincipal.getShopNombre()
-        );
+                userPrincipal.getShopNombre());
     }
 
     public Claims extraerClaims(String token) {
@@ -132,7 +138,12 @@ public class JwtTokenProvider {
 
     public boolean validarToken(String token) {
         try {
-            extraerClaims(token);
+            Claims claims = extraerClaims(token);
+            String tokenType = claims.get("tokenType", String.class);
+            if ("REFRESH".equalsIgnoreCase(tokenType)) {
+                log.warn("Rechazado intento de usar un REFRESH token como access token");
+                return false;
+            }
             return true;
         } catch (SignatureException ex) {
             log.error("Firma JWT no válida: {}", ex.getMessage());
@@ -151,17 +162,24 @@ public class JwtTokenProvider {
     }
 
     public boolean validarRefreshToken(String token) {
-        if (!validarToken(token)) {
-            return false;
-        }
         try {
             Claims claims = extraerClaims(token);
             String tokenType = claims.get("tokenType", String.class);
             return "REFRESH".equalsIgnoreCase(tokenType);
+        } catch (SignatureException ex) {
+            log.error("Firma JWT no válida en refresh token: {}", ex.getMessage());
+        } catch (MalformedJwtException ex) {
+            log.error("Refresh Token JWT malformado: {}", ex.getMessage());
+        } catch (ExpiredJwtException ex) {
+            log.warn("Refresh Token JWT expirado: {}", ex.getMessage());
+        } catch (UnsupportedJwtException ex) {
+            log.error("Refresh Token JWT no soportado: {}", ex.getMessage());
+        } catch (IllegalArgumentException ex) {
+            log.error("Claims de Refresh Token JWT vacíos o nulos: {}", ex.getMessage());
         } catch (Exception ex) {
             log.error("Error al validar refresh token JWT: {}", ex.getMessage());
-            return false;
         }
+        return false;
     }
 
     public Long extraerUsuarioId(String token) {
