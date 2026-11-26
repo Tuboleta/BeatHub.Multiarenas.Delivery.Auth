@@ -46,13 +46,13 @@ spec:
             - name: AZURE_SSO_ENABLED
               value: "true"
             - name: AZURE_SSO_JWKS_URL
-              value: "https://ssopreprod.b2clogin.com/ssopreprod.onmicrosoft.com/b2c_1a_passwordless_signin-optpass/discovery/v2.0/keys"
+              value: "https://ssoauthp.b2clogin.com/ssoauthp.onmicrosoft.com/b2c_1a_signup_signin_passwordless/discovery/v2.0/keys"
             - name: AZURE_SSO_WELL_KNOWN_URL
-              value: "https://ssopreprod.b2clogin.com/ssopreprod.onmicrosoft.com/B2C_1A_PASSWORDLESS_SIGNIN-OPTPASS/v2.0/.well-known/openid-configuration"
+              value: "https://ssoauthp.b2clogin.com/ssoauthp.onmicrosoft.com/B2C_1A_SIGNUP_SIGNIN_PASSWORDLESS/v2.0/.well-known/openid-configuration"
             - name: AZURE_SSO_CLIENT_ID
-              value: "63f8ef93-042a-40eb-a2f0-ba7b574e5ea6"
+              value: "43546991-88fa-4922-bd73-5041dadffbc5"
             - name: AZURE_SSO_ISSUER
-              value: "https://ssopreprod.b2clogin.com/bea47667-153a-452f-9723-8e8b4071f126/v2.0/"
+              value: "https://ssoauthp.b2clogin.com/89229765-5396-43d9-bede-aaf2dd22af74/v2.0/"
             - name: AZURE_SSO_VALIDATE_SIGNATURE
               value: "true"
             - name: AZURE_SSO_VALIDATE_AUDIENCE
