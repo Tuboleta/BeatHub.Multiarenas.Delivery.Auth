@@ -100,19 +100,24 @@ public class UsuarioServiceImpl implements UsuarioService {
         }
 
         // 4. Multi-Tenant y Seguridad según rol del operador autenticado
-        boolean esSuperAdminOBackoffice = SecurityUtils.hasRole("SUPER_ADMIN") || SecurityUtils.hasRole("BACKOFFICE");
+        boolean esSuperAdmin = SecurityUtils.hasRole("SUPER_ADMIN");
+        boolean esSuperAdminOBackoffice = esSuperAdmin || SecurityUtils.hasRole("BACKOFFICE");
         Long arenaId = request.getArenaId();
+
+        if (rol != null) {
+            String rolUpper = rol.getNombre().toUpperCase();
+            if (rolUpper.contains("SUPER_ADMIN") && !esSuperAdmin) {
+                throw new ForbiddenException(
+                        "Solo un SUPER_ADMIN puede crear usuarios con rol SUPER_ADMIN.");
+            }
+            if (rolUpper.contains("BACKOFFICE") && !esSuperAdmin) {
+                throw new ForbiddenException(
+                        "Solo un SUPER_ADMIN puede crear usuarios con rol BACKOFFICE.");
+            }
+        }
 
         if (!esSuperAdminOBackoffice) {
             // ADMIN_ARENA
-            if (rol != null) {
-                String rolUpper = rol.getNombre().toUpperCase();
-                if (rolUpper.equals("SUPER_ADMIN") || rolUpper.equals("BACKOFFICE")) {
-                    throw new ForbiddenException(
-                            "No tiene permisos para crear usuarios con roles administrativos globales.");
-                }
-            }
-
             if (arenaId != null) {
                 if (!SecurityUtils.hasArenaAccess(arenaId)) {
                     throw new ForbiddenException(
@@ -208,7 +213,22 @@ public class UsuarioServiceImpl implements UsuarioService {
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + usuarioId));
         Persona persona = usuario.getPersona();
 
-        boolean esSuperAdminOBackoffice = SecurityUtils.hasRole("SUPER_ADMIN") || SecurityUtils.hasRole("BACKOFFICE");
+        boolean esSuperAdmin = SecurityUtils.hasRole("SUPER_ADMIN");
+        boolean esSuperAdminOBackoffice = esSuperAdmin || SecurityUtils.hasRole("BACKOFFICE");
+        Long currentOperatorId = SecurityUtils.getCurrentUsuarioId().orElse(null);
+        boolean esMismoUsuario = currentOperatorId != null && currentOperatorId.equals(usuarioId);
+
+        // CRIT-07: Protección contra escalación de privilegios sobre cuentas administrativas protegidas
+        boolean usuarioObjetivoEsSuperAdmin = tieneRol(usuario, "SUPER_ADMIN");
+        boolean usuarioObjetivoEsBackoffice = tieneRol(usuario, "BACKOFFICE");
+
+        if (usuarioObjetivoEsSuperAdmin && !esSuperAdmin && !esMismoUsuario) {
+            throw new ForbiddenException("No tiene permisos para modificar una cuenta con rol SUPER_ADMIN.");
+        }
+        if (usuarioObjetivoEsBackoffice && !esSuperAdmin && !esMismoUsuario) {
+            throw new ForbiddenException("No tiene permisos para modificar una cuenta con rol BACKOFFICE.");
+        }
+
         if (!esSuperAdminOBackoffice) {
             Long adminArenaId = SecurityUtils.getCurrentArenaId()
                     .orElseThrow(() -> new ForbiddenException("No se pudo resolver la arena del administrador."));
@@ -329,10 +349,10 @@ public class UsuarioServiceImpl implements UsuarioService {
                                 "Rol no encontrado con nombre: " + request.getRolNombre()));
             }
 
-            if (!esSuperAdminOBackoffice && nuevoRol != null) {
+            if (nuevoRol != null) {
                 String rolUpper = nuevoRol.getNombre().toUpperCase();
-                if (rolUpper.equals("SUPER_ADMIN") || rolUpper.equals("BACKOFFICE")) {
-                    throw new ForbiddenException("No tiene permisos para asignar roles administrativos globales.");
+                if ((rolUpper.contains("SUPER_ADMIN") || rolUpper.contains("BACKOFFICE")) && !esSuperAdmin) {
+                    throw new ForbiddenException("Solo un SUPER_ADMIN puede asignar roles administrativos globales.");
                 }
             }
 
@@ -379,7 +399,18 @@ public class UsuarioServiceImpl implements UsuarioService {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con ID: " + usuarioId));
 
-        boolean esSuperAdminOBackoffice = SecurityUtils.hasRole("SUPER_ADMIN") || SecurityUtils.hasRole("BACKOFFICE");
+        boolean esSuperAdmin = SecurityUtils.hasRole("SUPER_ADMIN");
+        boolean usuarioObjetivoEsSuperAdmin = tieneRol(usuario, "SUPER_ADMIN");
+        boolean usuarioObjetivoEsBackoffice = tieneRol(usuario, "BACKOFFICE");
+
+        // CRIT-07: Prohibir a operadores sin rol SUPER_ADMIN modificar el estado de
+        // cuentas administrativas globales
+        if ((usuarioObjetivoEsSuperAdmin || usuarioObjetivoEsBackoffice) && !esSuperAdmin) {
+            throw new ForbiddenException(
+                    "No tiene permisos para modificar el estado de un usuario administrativo global.");
+        }
+
+        boolean esSuperAdminOBackoffice = esSuperAdmin || SecurityUtils.hasRole("BACKOFFICE");
         if (!esSuperAdminOBackoffice) {
             Long adminArenaId = SecurityUtils.getCurrentArenaId()
                     .orElseThrow(() -> new ForbiddenException("No se pudo resolver la arena del administrador."));
@@ -448,6 +479,22 @@ public class UsuarioServiceImpl implements UsuarioService {
         }
     }
 
+    private boolean tieneRol(Usuario usuario, String rolBuscado) {
+        if (usuario.getArenas() == null) {
+            return false;
+        }
+        String rolLimpio = rolBuscado.toUpperCase().replace("ROLE_", "");
+        return usuario.getArenas().stream()
+                .filter(au -> au.getRoles() != null)
+                .flatMap(au -> au.getRoles().stream())
+                .map(RolArenaUsuario::getRol)
+                .filter(Objects::nonNull)
+                .map(Rol::getNombre)
+                .filter(Objects::nonNull)
+                .map(n -> n.toUpperCase().replace("ROLE_", ""))
+                .anyMatch(n -> n.equals(rolLimpio));
+    }
+
     @Override
     @Transactional(readOnly = true)
     public UserProfileResponse obtenerPorId(Long usuarioId) {
@@ -501,10 +548,12 @@ public class UsuarioServiceImpl implements UsuarioService {
                 .orElseThrow(() -> new BusinessException("El usuario no está asignado a la arena ID: " + arenaId));
 
         boolean tieneRolRunner = arenaUsuario.getRoles().stream()
-                .anyMatch(r -> r.getRol() != null && "RUNNER".equalsIgnoreCase(r.getRol().getNombre().replace("ROLE_", "")));
+                .anyMatch(r -> r.getRol() != null
+                        && "RUNNER".equalsIgnoreCase(r.getRol().getNombre().replace("ROLE_", "")));
 
         if (!tieneRolRunner) {
-            throw new BusinessException("El usuario debe tener el rol RUNNER asignado en la arena para configurar zonas de cobertura.");
+            throw new BusinessException(
+                    "El usuario debe tener el rol RUNNER asignado en la arena para configurar zonas de cobertura.");
         }
 
         if (request.getZonas() != null && request.getZonas().size() > 3) {
@@ -558,7 +607,8 @@ public class UsuarioServiceImpl implements UsuarioService {
             runnersZonas = runnerZonaRepository.findActiveRunnersByArenaAndZona(arenaId, zonaId);
         }
 
-        // Si no hay zonificados para esa zona específica, buscar si hay runners zonificados en la arena
+        // Si no hay zonificados para esa zona específica, buscar si hay runners
+        // zonificados en la arena
         if (runnersZonas.isEmpty()) {
             runnersZonas = runnerZonaRepository.findByArenaIdAndActivoTrue(arenaId);
         }
@@ -602,12 +652,13 @@ public class UsuarioServiceImpl implements UsuarioService {
                     .build());
         }
 
-        // Si todavía no hay runners porque ningún runner ha sido zonificado en runner_zona,
+        // Si todavía no hay runners porque ningún runner ha sido zonificado en
+        // runner_zona,
         // fallback a cualquier runner activo registrado en la arena
         if (resultado.isEmpty()) {
             List<Usuario> runnersGenerales = usuarioRepository.findAll(
-                    com.beathub.multiarenas.delivery.auth.repository.specification.UsuarioSpecification.conFiltros(arenaId, 1, "RUNNER", null)
-            );
+                    com.beathub.multiarenas.delivery.auth.repository.specification.UsuarioSpecification
+                            .conFiltros(arenaId, 1, "RUNNER", null));
             for (Usuario u : runnersGenerales) {
                 Persona p = u.getPersona();
                 resultado.add(RunnerDisponibleResponse.builder()

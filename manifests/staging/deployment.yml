@@ -66,6 +66,8 @@ spec:
               value: "6379"
             - name: SPRING_DATA_REDIS_PASSWORD
               value: ""
+            - name: APP_AUDIT_ENABLED
+              value: "true"
           resources:
             requests:
               cpu: "250m"
