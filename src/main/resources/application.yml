@@ -114,3 +114,9 @@ services:
     url: ${SERVICES_ADS_SSO_URL:https://sso.tbl.mock}
     client-id: ${SERVICES_ADS_CLIENT_ID:beathub-client}
     client-secret: ${SERVICES_ADS_CLIENT_SECRET:}
+
+# Auditoría global de cambios (public.log_auditoria)
+app:
+  audit:
+    enabled: ${APP_AUDIT_ENABLED:true}
+    microservicio-id: 1
