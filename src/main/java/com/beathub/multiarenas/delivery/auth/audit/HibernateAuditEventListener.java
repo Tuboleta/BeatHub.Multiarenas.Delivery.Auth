@@ -23,12 +23,14 @@ import java.sql.Types;
 import java.util.*;
 
 /**
- * Listener global de Hibernate que registra automáticamente INSERT, UPDATE y DELETE
+ * Listener global de Hibernate que registra automáticamente INSERT, UPDATE y
+ * DELETE
  * en public.log_auditoria dentro de la misma transacción.
  */
 @Slf4j
 @Component
-public class HibernateAuditEventListener implements PostInsertEventListener, PostUpdateEventListener, PostDeleteEventListener {
+public class HibernateAuditEventListener
+        implements PostInsertEventListener, PostUpdateEventListener, PostDeleteEventListener {
 
     private static final String INSERT_AUDIT_SQL = """
             INSERT INTO public.log_auditoria (
@@ -44,19 +46,16 @@ public class HibernateAuditEventListener implements PostInsertEventListener, Pos
             "log_auditoria",
             "log_gateway",
             "log_servicios",
-            "exception_log"
-    );
+            "exception_log");
 
     private static final Set<String> IGNORED_DIFF_ONLY_FIELDS = Set.of(
             "actualizacionFecha",
             "actualizacionUsuario",
             "updatedAt",
-            "updatedBy"
-    );
+            "updatedBy");
 
     private static final List<String> SENSITIVE_KEYWORDS = List.of(
-            "password", "secret", "token", "clave", "pin", "cvv", "apikey", "api_key"
-    );
+            "password", "secret", "token", "clave", "pin", "cvv", "apikey", "api_key");
 
     private final ObjectMapper objectMapper;
 
@@ -263,8 +262,11 @@ public class HibernateAuditEventListener implements PostInsertEventListener, Pos
     }
 
     Long resolveArenaId(String entidad, Object id, String[] propertyNames, Object[] state) {
-        if ("arena".equals(entidad) && id instanceof Number num) {
-            return num.longValue();
+        if ("arena".equals(entidad)) {
+            Long parsedId = parseLongSafely(id);
+            if (parsedId != null) {
+                return parsedId;
+            }
         }
         if (propertyNames != null && state != null) {
             for (int i = 0; i < propertyNames.length && i < state.length; i++) {
@@ -273,18 +275,73 @@ public class HibernateAuditEventListener implements PostInsertEventListener, Pos
                 if (val == null) {
                     continue;
                 }
-                if ("arenaId".equals(prop) && val instanceof Number num) {
-                    return num.longValue();
+                if ("arenaId".equals(prop)) {
+                    Long parsed = parseLongSafely(val);
+                    if (parsed != null) {
+                        return parsed;
+                    }
                 }
                 if ("arena".equals(prop)) {
-                    Object extracted = normalizeValue(prop, val);
-                    if (extracted instanceof Number num) {
-                        return num.longValue();
+                    Long parsed = parseLongSafely(normalizeValue(prop, val));
+                    if (parsed != null) {
+                        return parsed;
                     }
+                }
+            }
+            for (Object val : state) {
+                Long parentArenaId = extractArenaIdFromRelatedEntity(val);
+                if (parentArenaId != null) {
+                    return parentArenaId;
                 }
             }
         }
         return SecurityUtils.getCurrentArenaId().orElse(null);
+    }
+
+    private Long parseLongSafely(Object value) {
+        if (value instanceof Number num) {
+            return num.longValue();
+        }
+        if (value instanceof String str) {
+            String trimmed = str.trim();
+            if (!trimmed.isEmpty()) {
+                try {
+                    return Long.parseLong(trimmed);
+                } catch (NumberFormatException ignored) {
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Long extractArenaIdFromRelatedEntity(Object value) {
+        if (value == null || isSkippedCollection(value) || !Hibernate.isInitialized(value)) {
+            return null;
+        }
+        Object target = Hibernate.unproxy(value);
+        if (target == null || !target.getClass().isAnnotationPresent(Entity.class)) {
+            return null;
+        }
+        try {
+            Method getArenaId = target.getClass().getMethod("getArenaId");
+            Long parsed = parseLongSafely(getArenaId.invoke(target));
+            if (parsed != null) {
+                return parsed;
+            }
+        } catch (Exception ignored) {
+            // Entidad relacionada sin método getArenaId()
+        }
+        try {
+            Method getArena = target.getClass().getMethod("getArena");
+            Object arena = getArena.invoke(target);
+            if (arena != null) {
+                return parseLongSafely(normalizeValue("arena", arena));
+            }
+        } catch (Exception ignored) {
+            // Entidad relacionada sin método getArena()
+        }
+        return null;
     }
 
     private Object extractEntityId(Object entity) {
@@ -297,18 +354,21 @@ public class HibernateAuditEventListener implements PostInsertEventListener, Pos
     }
 
     private void persistAudit(SharedSessionContractImplementor session,
-                              String entidad,
-                              Object recordId,
-                              String accion,
-                              Long arenaId,
-                              Map<String, Object> cambios) {
+            String entidad,
+            Object recordId,
+            String accion,
+            Long arenaId,
+            Map<String, Object> cambios) {
         String registroId = recordId != null ? String.valueOf(recordId) : "UNKNOWN";
         Optional<UserPrincipal> principalOpt = SecurityUtils.getCurrentUserPrincipal();
 
         Long usuarioId = principalOpt.map(UserPrincipal::getUsuarioId).orElse(null);
         String usuarioNombre = resolveUsuarioNombre(principalOpt);
         String usuarioRol = resolveUsuarioRol(principalOpt);
-        String correlationId = AuditContextHolder.getCorrelationId();
+        String rawCorrelationId = AuditContextHolder.getCorrelationId();
+        final String correlationId = (rawCorrelationId != null && !rawCorrelationId.isBlank())
+                ? rawCorrelationId
+                : UUID.randomUUID().toString();
 
         String cambiosJson;
         try {
